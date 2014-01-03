@@ -15,22 +15,6 @@ type receiver_state = {
   mutable line_callbacks	: (unit -> (receive_handler * receive_finish)) BatDeque.t;
 }
 
-module Protect :
-sig
-  type 'a t
-  val make : Mutex.t -> 'a -> 'a t
-  val access : 'a t -> ('a -> 'b) -> 'b
-end =
-struct
-  type 'a t = ('a * Mutex.t)
-  let make mutex value = (value, mutex)
-  let access (value, mutex) f = 
-    Mutex.lock mutex;
-    let v = wrap f value in
-      Mutex.unlock mutex;
-      ok v
-end
-
 let register_of_char = function
   | 'X' -> `X
   | 'Y' -> `Y
