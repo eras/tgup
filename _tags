@@ -1,0 +1,4 @@
+<*>: package(batteries), thread
+<*>: debug, annot
+<*>: no_warn_40
+
