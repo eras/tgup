@@ -41,12 +41,16 @@ let default_prompt =
   Term.(ret (pure (fun _ -> `Help (`Pager, None)) $ common_opts_t)),
   Term.info "tgup" ~version ~sdocs:"COMMON OPTIONS" ~doc ~man
 
-let cmd_upload = 
-  Term.(pure Upload.upload $ common_opts_t $ source),
+let cmd_upload sigint_triggered = 
+  Term.(pure (Upload.upload sigint_triggered) $ common_opts_t $ source),
   Term.info "upload" ~version
 
+let sigint_triggered = new Future.t
+
+let sigint_handler _ = sigint_triggered#set ()
+
 let main () = 
-  Sys.catch_break true;
-  match Term.eval_choice default_prompt [cmd_upload] with `Error _ -> exit 1 | _ -> exit 0
+  ignore (Sys.signal Sys.sigint (Sys.Signal_handle sigint_handler));
+  match Term.eval_choice default_prompt [cmd_upload sigint_triggered] with `Error _ -> exit 1 | _ -> exit 0
 
 let _ = main ()

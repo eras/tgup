@@ -60,7 +60,7 @@ let queue_threshold = 20 (* once there are less than n slots available, don't se
 let activate future x = 
   future#set (`Ok x)
 
-let receiver (common_options, fd, signal_fd, task_queue) =
+let receiver (sigint_triggered, common_options, fd, signal_fd, task_queue) =
   let queue_full = ref false in
   let command_queue : gcode_request Queue.t = Queue.create () in
   let lines_sent = ref 0 in
@@ -94,71 +94,75 @@ let receiver (common_options, fd, signal_fd, task_queue) =
       else (-1.0)
     in
     let (rd, _, _) = Unix.select [fd; signal_fd] [] [] timeout in
-    if do_send then
-      let c = Queue.take write_queue in
-      buf.[0] <- c;
-      let n = Unix.write fd buf 0 1 in
-      if n <= 0 then
-	raise End_of_file
-      else ();
-    else ();
-    match () with
-    | _ when List.mem fd rd ->
-      let n = Unix.read fd buf 0 (String.length buf) in
-      if n = 0 then
-	raise End_of_file;
-      for c = 0 to n - 1 do
-	match buf.[c] with
-	| ch when ch = xon ->
-	  Printf.printf "*** XON ***\n%!";
-	  enable_send := true
-	| ch when ch = xoff ->
-	  Printf.printf "*** XOFF ***\n%!";
-	  enable_send := false
-	| _ -> ()
-      done;
-      let strings = LineBuffer.append_substring lb buf 0 n in
-      List.iter
-	(fun str -> 
-	  Printf.printf "<-%s\n%!" str;
-	  match get_tinyg str with
-	  | `Result result as full_result ->
-	    ( match get_linenumber full_result with
-	    | Some linenumber ->
-	      let callback = Hashtbl.find rt.rt_line_callbacks linenumber in
-	      Hashtbl.remove rt.rt_line_callbacks linenumber;
-	      callback result
-	    | None -> 
-	      Printf.printf "Response without linenumber\n%!"
-	    )
-	  | `Status status ->
-	    let current_linenumber = 
-	      try Some (get_int (List.assoc "line" status)) 
-	      with Not_found -> None in
-	    ( match current_linenumber with
-	    | None -> ()
-	    | Some _current_linenumber -> ()
-	    )
-	  | `Queue_report r ->
-	    Printf.printf "**** Queue report: %d\n%!" r;
-	    queue_full := r < queue_threshold;
-	    flush_queue ()
-	  | `Other _ ->
-	    ()
-	)
-	strings;
-      feed_lines ()
-    | _ when List.mem signal_fd rd ->
-      let n = Unix.read signal_fd buf 0 1 in
-      if n = 0 then
-	`Aiee
-      else 
-	let task = Protect.access task_queue Queue.take in
-	task rt;
-	flush_queue ();
-	feed_lines ()
-    | _ ->
-      feed_lines ()
+    if sigint_triggered#get = Some () then
+      `Aiee
+    else (
+      if do_send then
+	let c = Queue.take write_queue in
+	buf.[0] <- c;
+	let n = Unix.write fd buf 0 1 in
+	if n <= 0 then
+	  raise End_of_file
+	else ();
+	  else ();
+        match () with
+        | _ when List.mem fd rd ->
+          let n = Unix.read fd buf 0 (String.length buf) in
+          if n = 0 then
+        raise End_of_file;
+          for c = 0 to n - 1 do
+        match buf.[c] with
+        | ch when ch = xon ->
+          Printf.printf "*** XON ***\n%!";
+          enable_send := true
+        | ch when ch = xoff ->
+          Printf.printf "*** XOFF ***\n%!";
+          enable_send := false
+        | _ -> ()
+          done;
+          let strings = LineBuffer.append_substring lb buf 0 n in
+          List.iter
+        (fun str ->
+          Printf.printf "<-%s\n%!" str;
+          match get_tinyg str with
+          | `Result result as full_result ->
+            ( match get_linenumber full_result with
+            | Some linenumber ->
+              let callback = Hashtbl.find rt.rt_line_callbacks linenumber in
+              Hashtbl.remove rt.rt_line_callbacks linenumber;
+              callback result
+            | None ->
+              Printf.printf "Response without linenumber\n%!"
+            )
+          | `Status status ->
+            let current_linenumber =
+              try Some (get_int (List.assoc "line" status))
+              with Not_found -> None in
+            ( match current_linenumber with
+            | None -> ()
+            | Some _current_linenumber -> ()
+            )
+          | `Queue_report r ->
+            Printf.printf "**** Queue report: %d\n%!" r;
+            queue_full := r < queue_threshold;
+            flush_queue ()
+          | `Other _ ->
+            ()
+        )
+        strings;
+          feed_lines ()
+        | _ when List.mem signal_fd rd ->
+          let n = Unix.read signal_fd buf 0 1 in
+          if n = 0 then
+            `Aiee
+          else
+            let task = Protect.access task_queue Queue.take in
+            task rt;
+            flush_queue ();
+            feed_lines ()
+        | _ ->
+          feed_lines ()
+        )
   in
   let `Aiee = feed_lines () in
   Printf.printf "Receiver finished\n%!"
@@ -192,12 +196,12 @@ let strip_whitespace str = Pcre.replace ~pat:"[\t ]" str
 let get_gcode lines =
   lines |> Enum.map (strip_comments %> strip_whitespace) |> Enum.filter ((<>) "") |> List.of_enum
 
-let upload common_options file =
+let upload sigint_triggered common_options file =
   Serial.with_serial (common_options.co_device, common_options.co_bps) @@ fun fd ->
     let input_gcode = get_gcode (File.lines_of file)  in
     let signal_fds = Unix.pipe () in
     let task_queue = Protect.create (Mutex.create ()) (Queue.create ()) in
-    let thread = Thread.create receiver (common_options, fd, fst signal_fds, task_queue) in
+    let thread = Thread.create receiver (sigint_triggered, common_options, fd, fst signal_fds, task_queue) in
     let t = { fd; signal_fd = Protect.create (Mutex.create ()) (ref (Some (snd signal_fds))); task_queue } in
     let ready = new Future.t in
     let rec feed_lines input =
