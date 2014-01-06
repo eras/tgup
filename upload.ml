@@ -64,7 +64,7 @@ let receiver (fd, signal_fd, task_queue) =
   let rt = { rt_line_callbacks = Hashtbl.create 1024 } in
   let buf = String.create 1024 in
   let lb = LineBuffer.create () in
-  let rec loop () =
+  let rec feed_lines () =
     let (rd, _, _) = Unix.select [fd; signal_fd] [] [] (-1.0) in
     match () with
     | _ when List.mem fd rd ->
@@ -77,11 +77,9 @@ let receiver (fd, signal_fd, task_queue) =
 	  Printf.printf "<-%s\n%!" str;
 	  match get_tinyg str with
 	  | `Result result as full_result ->
-	    Printf.printf "result: %s\n%!" (Yojson.Safe.to_string (`Assoc result));
 	    ( match get_linenumber full_result with
 	    | Some linenumber ->
 	      let callback = Hashtbl.find rt.rt_line_callbacks linenumber in
-	      Printf.printf "Callback %d found\n%!" linenumber;
 	      Hashtbl.remove rt.rt_line_callbacks linenumber;
 	      callback result
 	    | None -> 
@@ -91,7 +89,7 @@ let receiver (fd, signal_fd, task_queue) =
 	    ()
 	)
 	strings;
-      loop ()
+      feed_lines ()
     | _ when List.mem signal_fd rd ->
       let n = Unix.read signal_fd buf 0 1 in
       if n = 0 then
@@ -99,16 +97,16 @@ let receiver (fd, signal_fd, task_queue) =
       else 
 	let task = Protect.access task_queue Queue.take in
 	task rt;
-	loop ()
+	feed_lines ()
     | _ -> ()
-  in loop ()
+  in
+  feed_lines ();
+  Printf.printf "Receiver finished\n%!"
 
 let add_line_callback rt n fn =
   match n with
   | None -> failwith "fill in code"
-  | Some n -> 
-    Printf.printf "Adding callback for %d\n%!" n;
-    Hashtbl.add rt.rt_line_callbacks n fn
+  | Some n -> Hashtbl.add rt.rt_line_callbacks n fn
 
 type t = {
   fd	     : Unix.file_descr;
@@ -126,7 +124,6 @@ let request t fn =
     ignore (Unix.write fd "1" 0 1)
 
 let activate future x = 
-  Printf.printf "Plop\n%!";
   future#set (`Ok x)
 
 let send_gcode t gcode =
