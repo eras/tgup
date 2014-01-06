@@ -1,4 +1,4 @@
-<*>: package(batteries), thread
+<*>: package(batteries), thread, package(cmdliner), package(yojson)
 <*>: debug, annot
 <*>: no_warn_40
 
