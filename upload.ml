@@ -112,22 +112,27 @@ let add_line_callback rt n fn =
 
 type t = {
   fd	     : Unix.file_descr;
-  signal_fd  : Unix.file_descr;		(* this should be protected, so we can close it without thread synchronization trouble *)
+  signal_fd  : Unix.file_descr option ref Protect.t;
   lines_sent : int ref;
   task_queue : (rt -> unit) Queue.t Protect.t;
 }
 
 let request t fn =
-  Protect.access t.task_queue (Queue.add fn);
-  ignore (Unix.write t.signal_fd "1" 0 1)
+  Protect.access t.signal_fd @@ function
+  | { contents = None } ->
+    fn (`Aborted)
+  | { contents = Some fd } ->
+    Protect.access t.task_queue (Queue.add (fun rt -> fn (`Ok rt)));
+    ignore (Unix.write fd "1" 0 1)
 
 let activate future x = 
   Printf.printf "Plop\n%!";
-  future#set x
+  future#set (`Ok x)
 
 let send_gcode t gcode =
   let activation = new Future.t in
-  request t (fun rt ->
+  request t (function
+  | `Ok rt ->
     incr t.lines_sent;
     let linenumber = !(t.lines_sent) in
     let msg = Printf.sprintf "{\"gc\":\"%s N%d\"}\r\n" gcode linenumber in
@@ -135,6 +140,8 @@ let send_gcode t gcode =
     add_line_callback rt (Some linenumber) (activate activation);
     let _n = Unix.write t.fd msg 0 (String.length msg) in
     ()
+  | `Aborted ->
+    activation#set `Aborted
   );
   activation
 
@@ -144,16 +151,24 @@ let upload common_options file =
   let signal_fds = Unix.pipe () in
   let task_queue = Protect.create (Mutex.create ()) (Queue.create ()) in
   let thread = Thread.create receiver (fd, fst signal_fds, task_queue) in
-  let t = { fd; signal_fd = snd signal_fds; lines_sent = ref 0; task_queue } in
+  let t = { fd; signal_fd = Protect.create (Mutex.create ()) (ref (Some (snd signal_fds))); lines_sent = ref 0; task_queue } in
   let rec loop () =
     let f = send_gcode t "G0 X0 Y0" in
-    f#add_callback @@ fun r -> 
+    f#add_callback @@ function
+    | `Ok r -> 
       Printf.printf "Received response!\n%!";
       Unix.sleep 1;
-      loop ()
+    | `Aborted -> 
+      Printf.printf "Meh, error sending request!\n%!";
   in
   loop ();
   Unix.sleep 5;
-  Unix.close (snd signal_fds);
+  Protect.access t.signal_fd (
+    function
+    | { contents = None } -> assert false;
+    | { contents = Some fd } as sfd ->
+      Unix.close fd;
+      sfd := None
+  );
   Thread.join thread;
   ()
