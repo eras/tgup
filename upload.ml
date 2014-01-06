@@ -84,7 +84,6 @@ let receiver (fd, signal_fd, task_queue) =
       List.iter
 	(fun c -> Queue.add c write_queue)
 	(String.explode msg);
-      (* decr slots_available; -- disabled for now *)
       flush_queue ()
   in
   let rec feed_lines () =
