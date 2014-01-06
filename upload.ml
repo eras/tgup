@@ -97,7 +97,6 @@ let receiver (fd, signal_fd, task_queue) =
     if do_send then
       let c = Queue.take write_queue in
       buf.[0] <- c;
-      Printf.printf "->%c\n%!" c;
       let n = Unix.write fd buf 0 1 in
       if n <= 0 then
 	raise End_of_file
