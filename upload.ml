@@ -50,6 +50,9 @@ let add_line_callback rt n fn =
   | None -> failwith "fill in code"
   | Some n -> Hashtbl.add rt.rt_line_callbacks n fn
 
+let xon = Char.chr 17
+let xoff = Char.chr 19
+
 let activate future x = 
   future#set (`Ok x)
 
@@ -65,6 +68,7 @@ let receiver (fd, signal_fd, task_queue) =
   let buf = String.create 1024 in
   let lb = LineBuffer.create () in
   let last_linenumber = ref 0 in
+  let enable_send = ref true in
   let rec flush_queue () =
     if !slots_available > 0 && not (Queue.is_empty command_queue) then
       let gcode, callback = Queue.take command_queue in
@@ -80,13 +84,14 @@ let receiver (fd, signal_fd, task_queue) =
       flush_queue ()
   in
   let rec feed_lines () =
+    let do_send = not (Queue.is_empty write_queue) && !enable_send in
     let timeout = 
-      if Queue.is_empty write_queue
-      then (-1.0)
-      else 1.0 /. (115200.0 /. 8.0)
+      if do_send
+      then 1.0 /. (115200.0 /. 8.0)
+      else (-1.0)
     in
     let (rd, _, _) = Unix.select [fd; signal_fd] [] [] timeout in
-    if not (Queue.is_empty write_queue) then
+    if do_send then
       let c = Queue.take write_queue in
       buf.[0] <- c;
       Printf.printf "->%c\n%!" c;
@@ -100,6 +105,16 @@ let receiver (fd, signal_fd, task_queue) =
       let n = Unix.read fd buf 0 (String.length buf) in
       if n = 0 then
 	raise End_of_file;
+      for c = 0 to n - 1 do
+	match buf.[c] with
+	| ch when ch = xon ->
+	  Printf.printf "*** XON ***\n%!";
+	  enable_send := true
+	| ch when ch = xoff ->
+	  Printf.printf "*** XOFF ***\n%!";
+	  enable_send := false
+	| _ -> ()
+      done;
       let strings = LineBuffer.append_substring lb buf 0 n in
       List.iter
 	(fun str -> 
