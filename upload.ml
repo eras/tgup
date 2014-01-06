@@ -142,23 +142,36 @@ let send_gcode t gcode =
   );
   activation
 
+let strip_comments str = Pcre.replace ~pat:"\\(.*\\)*" str
+
+let strip_whitespace str = Pcre.replace ~pat:"[\t ]" str
+
+let get_gcode lines =
+  lines |> Enum.map (strip_comments %> strip_whitespace) |> Enum.filter ((<>) "") |> List.of_enum
+
 let upload common_options file =
   let fd = open_serial common_options.co_device common_options.co_bps in
-  let input = List.of_enum (File.lines_of file) in
+  let input_gcode = get_gcode (File.lines_of file)  in
   let signal_fds = Unix.pipe () in
   let task_queue = Protect.create (Mutex.create ()) (Queue.create ()) in
   let thread = Thread.create receiver (fd, fst signal_fds, task_queue) in
   let t = { fd; signal_fd = Protect.create (Mutex.create ()) (ref (Some (snd signal_fds))); lines_sent = ref 0; task_queue } in
-  let rec loop () =
-    let f = send_gcode t "G0 X0 Y0" in
-    f#add_callback @@ function
-    | `Ok r -> 
-      Printf.printf "Received response!\n%!";
-      Unix.sleep 1;
-    | `Aborted -> 
-      Printf.printf "Meh, error sending request!\n%!";
+  let ready = new Future.t in
+  let rec feed_lines input =
+    match input with
+    | [] -> 
+      Printf.printf "Done!\n%!";
+      ready#set ();
+    | command::rest ->
+      (send_gcode t command)#add_callback @@ function
+      | `Ok r -> 
+	feed_lines rest
+      | `Aborted -> 
+	Printf.printf "Meh, error sending request!\n%!";
+	ready#set ()
   in
-  loop ();
+  feed_lines input_gcode;
+  ready#wait ();
   Unix.sleep 5;
   Protect.access t.signal_fd (
     function
