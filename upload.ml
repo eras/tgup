@@ -165,6 +165,8 @@ let receiver (sigint_triggered, common_options, fd, signal_fd, task_queue) =
         )
   in
   let `Aiee = feed_lines () in
+  ( try ignore (Unix.write fd "!" 0 1);
+    with _ -> () );
   Printf.printf "Receiver finished\n%!"
 
 type t = {
