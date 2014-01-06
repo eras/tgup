@@ -12,3 +12,8 @@ object
     | None -> callbacks <- cb::callbacks
     | Some x -> cb x
 end
+
+let map f x =
+  let future = new t in
+  x#add_callback (fun x -> future#set (f x));
+  future
