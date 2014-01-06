@@ -61,6 +61,7 @@ let receiver (fd, signal_fd, task_queue) =
     rt_line_callbacks = Hashtbl.create 1024;
     rt_send_gcode = fun x -> Queue.add x command_queue;
   } in
+  let write_queue = Queue.create () in
   let buf = String.create 1024 in
   let lb = LineBuffer.create () in
   let last_linenumber = ref 0 in
@@ -72,12 +73,28 @@ let receiver (fd, signal_fd, task_queue) =
       let msg = Printf.sprintf "{\"gc\":\"%s N%d\"}\r\n" gcode linenumber in
       Printf.printf "-> %s%!" msg;
       add_line_callback rt (Some linenumber) callback;
-      let _n = Unix.write fd msg 0 (String.length msg) in
+      List.iter
+	(fun c -> Queue.add c write_queue)
+	(String.explode msg);
       (* decr slots_available; -- disabled for now *)
       flush_queue ()
   in
   let rec feed_lines () =
-    let (rd, _, _) = Unix.select [fd; signal_fd] [] [] (-1.0) in
+    let timeout = 
+      if Queue.is_empty write_queue
+      then (-1.0)
+      else 1.0 /. (115200.0 /. 8.0)
+    in
+    let (rd, _, _) = Unix.select [fd; signal_fd] [] [] timeout in
+    if not (Queue.is_empty write_queue) then
+      let c = Queue.take write_queue in
+      buf.[0] <- c;
+      Printf.printf "->%c\n%!" c;
+      let n = Unix.write fd buf 0 1 in
+      if n <= 0 then
+	raise End_of_file
+      else ();
+    else ();
     match () with
     | _ when List.mem fd rd ->
       let n = Unix.read fd buf 0 (String.length buf) in
@@ -117,15 +134,16 @@ let receiver (fd, signal_fd, task_queue) =
     | _ when List.mem signal_fd rd ->
       let n = Unix.read signal_fd buf 0 1 in
       if n = 0 then
-	() (* exit *)
+	`Aiee
       else 
 	let task = Protect.access task_queue Queue.take in
 	task rt;
 	flush_queue ();
 	feed_lines ()
-    | _ -> ()
+    | _ ->
+      feed_lines ()
   in
-  feed_lines ();
+  let `Aiee = feed_lines () in
   Printf.printf "Receiver finished\n%!"
 
 type t = {
