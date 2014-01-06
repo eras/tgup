@@ -1,0 +1,5 @@
+B _build
+FLG -w -40
+PKG batteries
+PKG cmdliner
+PKG yojson
