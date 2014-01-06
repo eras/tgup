@@ -1,16 +1,22 @@
 class ['a] t =
 object
+  val mutex = Protect.create (Mutex.create ()) ()
   val mutable value : 'a option = None
   val mutable callbacks : ('a -> unit) list = []
   method get = value
   method set (x : 'a) =
-    assert (value = None);
-    value <- Some x;
-    List.iter (fun cb -> cb x) callbacks
+    let cbs =
+      Protect.access mutex @@ fun () ->
+	assert (value = None);
+	value <- Some x;
+	callbacks
+    in
+    List.iter (fun cb -> cb x) cbs;
   method add_callback (cb : 'a -> unit) =
-    match value with
-    | None -> callbacks <- cb::callbacks
-    | Some x -> cb x
+    (Protect.access mutex @@ fun () ->
+      match value with
+      | None -> callbacks <- cb::callbacks; ignore
+      | Some x -> (fun () -> cb x)) ()
 end
 
 let map f x =
