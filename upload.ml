@@ -60,7 +60,7 @@ let queue_threshold = 20 (* once there are less than n slots available, don't se
 let activate future x = 
   future#set (`Ok x)
 
-let receiver (fd, signal_fd, task_queue) =
+let receiver (common_options, fd, signal_fd, task_queue) =
   let queue_full = ref false in
   let command_queue : gcode_request Queue.t = Queue.create () in
   let lines_sent = ref 0 in
@@ -90,7 +90,7 @@ let receiver (fd, signal_fd, task_queue) =
     let do_send = not (Queue.is_empty write_queue) && !enable_send in
     let timeout = 
       if do_send
-      then 1.0 /. (115200.0 /. 8.0)
+      then 1.0 /. (float common_options.co_send_bps /. 8.0)
       else (-1.0)
     in
     let (rd, _, _) = Unix.select [fd; signal_fd] [] [] timeout in
@@ -197,7 +197,7 @@ let upload common_options file =
     let input_gcode = get_gcode (File.lines_of file)  in
     let signal_fds = Unix.pipe () in
     let task_queue = Protect.create (Mutex.create ()) (Queue.create ()) in
-    let thread = Thread.create receiver (fd, fst signal_fds, task_queue) in
+    let thread = Thread.create receiver (common_options, fd, fst signal_fds, task_queue) in
     let t = { fd; signal_fd = Protect.create (Mutex.create ()) (ref (Some (snd signal_fds))); task_queue } in
     let ready = new Future.t in
     let rec feed_lines input =

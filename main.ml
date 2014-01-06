@@ -13,7 +13,7 @@ let help_subcommands = [
   `P "Use `$(mname) help environment' for help on environment variables.";
   `S "BUGS"; `P "Check bug reports at http://bugs.example.org.";]
 
-let common_opts co_device co_bps = { co_device; co_bps }
+let common_opts co_device co_bps co_send_bps = { co_device; co_bps; co_send_bps }
 
 let common_opts_t = 
   let docs = "COMMON OPTIONS" in 
@@ -25,7 +25,11 @@ let common_opts_t =
     let doc = "Set bps to use." in
     Arg.(value & opt int 115200 & info ["b"; "bps"] ~docs ~doc)
   in
-  Term.(pure common_opts $ device $ bps)
+  let send_bps = 
+    let doc = "Set bps to use for sending characters (by using delaying)." in
+    Arg.(value & opt int 38400 & info ["s"; "send-bps"] ~docs ~doc)
+  in
+  Term.(pure common_opts $ device $ bps $ send_bps)
 
 let source =
   let doc = "Source data" in  
