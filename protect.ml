@@ -13,7 +13,10 @@ let wait_access (value, mutex, condition) p f =
     let rec wait () =
       match wrap p value with
       | Ok true -> ()
-      | Ok false -> wait ()
+      | Ok false ->
+	Condition.wait condition mutex;
+	wait ()
       | Bad exn -> raise exn
     in
+    wait ();
     f value
