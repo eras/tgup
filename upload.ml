@@ -32,7 +32,9 @@ let get_tinyg str =
   try `Result (get_assoc (List.assoc "r" a))
   with Not_found -> 
     try `Status (get_assoc (List.assoc "sr" a))
-    with Not_found -> `Other a
+    with Not_found ->
+      try `Queue_report (get_int (List.assoc "qr" a))
+      with Not_found -> `Other a
 
 type result = (string * Json.json) list
 
@@ -53,11 +55,13 @@ let add_line_callback rt n fn =
 let xon = Char.chr 17
 let xoff = Char.chr 19
 
+let queue_threshold = 20 (* once there are less than n slots available, don't send new commands *)
+
 let activate future x = 
   future#set (`Ok x)
 
 let receiver (fd, signal_fd, task_queue) =
-  let slots_available = ref 1 in
+  let queue_full = ref false in
   let command_queue : gcode_request Queue.t = Queue.create () in
   let lines_sent = ref 0 in
   let rt = {
@@ -70,7 +74,7 @@ let receiver (fd, signal_fd, task_queue) =
   let last_linenumber = ref 0 in
   let enable_send = ref true in
   let rec flush_queue () =
-    if !slots_available > 0 && not (Queue.is_empty command_queue) then
+    if !enable_send && not !queue_full && not (Queue.is_empty command_queue) then
       let gcode, callback = Queue.take command_queue in
       incr lines_sent;
       let linenumber = !lines_sent in
@@ -135,12 +139,12 @@ let receiver (fd, signal_fd, task_queue) =
 	      with Not_found -> None in
 	    ( match current_linenumber with
 	    | None -> ()
-	    | Some current_linenumber ->
-	      let delta = current_linenumber - !last_linenumber in
-	      slots_available := !slots_available + delta;
-	      Printf.printf "%d new slots, %d in total\n%!" delta !slots_available;
-	      flush_queue ()
+	    | Some _current_linenumber -> ()
 	    )
+	  | `Queue_report r ->
+	    Printf.printf "**** Queue report: %d\n%!" r;
+	    queue_full := r < queue_threshold;
+	    flush_queue ()
 	  | `Other _ ->
 	    ()
 	)
