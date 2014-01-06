@@ -164,6 +164,7 @@ let receiver (sigint_triggered, common_options, fd, signal_fd, task_queue) =
           feed_lines ()
         )
   in
+  ignore (Unix.write fd "%~" 0 2);
   let `Aiee = feed_lines () in
   ( try ignore (Unix.write fd "!" 0 1);
     with _ -> () );
