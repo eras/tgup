@@ -3,7 +3,12 @@ object
   val mutex = Protect.create (Mutex.create ()) ()
   val mutable value : 'a option = None
   val mutable callbacks : ('a -> unit) list = []
-  method get = value
+  method get = Protect.access mutex @@ fun () -> value
+  method wait () =
+    Protect.wait_access mutex (fun () -> value <> None) @@ fun () ->
+      match value with
+      | None -> assert false
+      | Some x -> x
   method set (x : 'a) =
     let cbs =
       Protect.access mutex @@ fun () ->
