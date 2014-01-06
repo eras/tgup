@@ -42,6 +42,7 @@ let cmd_upload =
   Term.info "upload" ~version
 
 let main () = 
+  Sys.catch_break true;
   match Term.eval_choice default_prompt [cmd_upload] with `Error _ -> exit 1 | _ -> exit 0
 
 let _ = main ()
