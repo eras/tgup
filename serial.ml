@@ -50,6 +50,8 @@ let open_serial (device, bps) =
       c_echo	    = false;
       c_vtime       = 1;
       c_vmin	    = 1;
+      c_ixon	    = false; (* let our software deal with this *)
+      c_ixoff	    = false; (* well, TinyG doesn't support this anyway? *)
   } in
   let _ = Unix.tcsetattr fd Unix.TCSANOW tio in
   fd
