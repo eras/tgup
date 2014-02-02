@@ -199,9 +199,9 @@ let strip_whitespace str = Pcre.replace ~pat:"[\t ]" str
 let get_gcode lines =
   lines |> Enum.map (strip_comments %> strip_whitespace) |> Enum.filter ((<>) "") |> List.of_enum
 
-let upload sigint_triggered common_options file =
+let upload sigint_triggered common_options file start_from_line =
   Serial.with_serial (common_options.co_device, common_options.co_bps) @@ fun fd ->
-    let input_gcode = get_gcode (File.lines_of file)  in
+    let input_gcode = get_gcode (Enum.skip (start_from_line - 1) (File.lines_of file))  in
     let signal_fds = Unix.pipe () in
     let task_queue = Protect.create (Mutex.create ()) (Queue.create ()) in
     let thread = Thread.create receiver (sigint_triggered, common_options, fd, fst signal_fds, task_queue) in

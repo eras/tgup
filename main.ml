@@ -35,6 +35,10 @@ let source =
   let doc = "Source data" in  
   Arg.(required & pos 0 (some file) None & info [] ~doc)
 
+let start_from_line =
+  let doc = "Start transmitting beginning from this line (first line is 1)" in
+  Arg.(value & opt int 1 & info ["#"; "first-line"] ~doc)
+
 let default_prompt = 
   let doc = "A standalone G-code uploader for TinyG" in 
   let man = help_subcommands in
@@ -42,7 +46,7 @@ let default_prompt =
   Term.info "tgup" ~version ~sdocs:"COMMON OPTIONS" ~doc ~man
 
 let cmd_upload sigint_triggered = 
-  Term.(pure (Upload.upload sigint_triggered) $ common_opts_t $ source),
+  Term.(pure (Upload.upload sigint_triggered) $ common_opts_t $ source $ start_from_line),
   Term.info "upload" ~version
 
 let sigint_triggered = new Future.t
