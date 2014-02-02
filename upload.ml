@@ -52,6 +52,8 @@ let add_line_callback rt n fn =
   | None -> failwith "fill in code"
   | Some n -> Hashtbl.add rt.rt_line_callbacks n fn
 
+let debug = false
+
 let xon = Char.chr 17
 let xoff = Char.chr 19
 
@@ -145,7 +147,7 @@ let receiver (sigint_triggered, common_options, fd, signal_fd, task_queue) =
             | Some _current_linenumber -> ()
             )
           | `Queue_report r ->
-            Printf.printf "**** Queue report: %d\n%!" r;
+            if debug then Printf.printf "**** Queue report: %d\n%!" r;
             queue_full := r < queue_threshold;
             flush_queue ()
           | `Other _ ->
