@@ -4,3 +4,4 @@ PKG batteries
 PKG cmdliner
 PKG yojson
 PKG pcre
+PKG ANSITerminal

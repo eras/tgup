@@ -202,15 +202,64 @@ let strip_whitespace str = Pcre.replace ~pat:"[\t ]" str
 let get_gcode lines =
   lines |> Enum.map (strip_comments %> strip_whitespace) |> Enum.filter ((<>) "") |> List.of_enum
 
+let string_of_tm { Unix.tm_sec = sec;
+                   tm_min = min;
+                   tm_hour = hour;
+                   tm_mday = mday;
+                   tm_mon = mon;
+                   tm_year = year } =
+  Printf.sprintf
+    "%04d-%02d-%02d %02d:%02d:%02d"
+    (year + 1900)
+    (mon + 1)
+    (mday)
+    (hour)
+    (min)
+    (sec)
+
+let string_of_time t =
+  string_of_tm (Unix.localtime t)
+
+let human_eta seconds =
+  let parts = [(60, "s"); (60, "m"); (60, "h"); (24, "d")] in
+  let left, segs =
+    List.fold_left
+      (fun (left, segs) (unit_size, unit_name) ->
+	if left > 0
+	then
+	  (left / unit_size, (Printf.sprintf "%d%s" (left mod unit_size) unit_name :: segs))
+	else (left, segs)
+      )
+      (seconds, [])
+      parts
+  in
+  if left > 0
+  then "n/a"
+  else String.concat " " segs
+      
+
 let upload sigint_triggered common_options file start_from_line =
   Serial.with_serial (common_options.co_device, common_options.co_bps) @@ fun fd ->
     let input_gcode = get_gcode (Enum.skip (start_from_line - 1) (File.lines_of file))  in
+    let input_nlines = List.length input_gcode in
     let signal_fds = Unix.pipe () in
     let task_queue = Protect.create (Mutex.create ()) (Queue.create ()) in
     let thread = Thread.create receiver (sigint_triggered, common_options, fd, fst signal_fds, task_queue) in
     let t = { fd; signal_fd = Protect.create (Mutex.create ()) (ref (Some (snd signal_fds))); task_queue } in
     let ready = new Future.t in
-    let rec feed_lines input =
+    let t0 = Unix.gettimeofday () in
+    let update_status n =
+      let open ANSITerminal in
+      let progress = float n /. float input_nlines in
+      move_bol ();
+      let time_left = (Unix.gettimeofday () -. t0) /. progress in
+      let time_finished = t0 +. time_left in
+      printf [Bold; green; on_default] "%2.1f%%" (100.0 *. progress);
+      printf [default] " complete, %d/%d, ETA " n input_nlines;
+      printf [Bold; green; on_default] "%s (%s)" (human_eta (int_of_float time_left)) (string_of_time time_finished);
+      erase Eol;
+    in
+    let rec feed_lines input linenumber =
       match input with
       | [] -> 
 	Printf.printf "Done!\n%!";
@@ -218,12 +267,13 @@ let upload sigint_triggered common_options file start_from_line =
       | command::rest ->
 	(send_gcode t command)#add_callback @@ function
 	| `Ok r -> 
-	  feed_lines rest
+	  update_status linenumber;
+	  feed_lines rest (linenumber + 1)
 	| `Aborted -> 
 	  Printf.printf "Meh, error sending request!\n%!";
 	  ready#set ()
     in
-    feed_lines input_gcode;
+    feed_lines input_gcode 1;
     ready#wait ();
     Unix.sleep 5;
     Protect.access t.signal_fd (
