@@ -53,6 +53,7 @@ let add_line_callback rt n fn =
   | Some n -> Hashtbl.add rt.rt_line_callbacks n fn
 
 let debug = false
+let verbose = false
 
 let xon = Char.chr 17
 let xoff = Char.chr 19
@@ -81,7 +82,7 @@ let receiver (sigint_triggered, common_options, fd, signal_fd, task_queue) =
       incr lines_sent;
       let linenumber = !lines_sent in
       let msg = Printf.sprintf "{\"gc\":\"%s N%d\"}\r\n" gcode linenumber in
-      Printf.printf "-> %s%!" msg;
+      if verbose then Printf.printf "-> %s%!" msg;
       add_line_callback rt (Some linenumber) callback;
       List.iter
 	(fun c -> Queue.add c write_queue)
@@ -117,17 +118,17 @@ let receiver (sigint_triggered, common_options, fd, signal_fd, task_queue) =
           for c = 0 to n - 1 do
         match buf.[c] with
         | ch when ch = xon ->
-          Printf.printf "*** XON ***\n%!";
+          if verbose then Printf.printf "*** XON ***\n%!";
           enable_send := true
         | ch when ch = xoff ->
-          Printf.printf "*** XOFF ***\n%!";
+          if verbose then Printf.printf "*** XOFF ***\n%!";
           enable_send := false
         | _ -> ()
           done;
           let strings = LineBuffer.append_substring lb buf 0 n in
           List.iter
         (fun str ->
-          Printf.printf "<-%s\n%!" str;
+          if verbose then Printf.printf "<-%s\n%!" str;
           match get_tinyg str with
           | `Result result as full_result ->
             ( match get_linenumber full_result with
