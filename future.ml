@@ -1,8 +1,10 @@
+open Batteries
+
 class ['a] t =
 object
   val mutex = Protect.create (Mutex.create ()) ()
   val mutable value : 'a option = None
-  val mutable callbacks : ('a -> unit) list = []
+  val mutable callbacks : (('a -> unit), unit) BatInnerWeaktbl.t = BatInnerWeaktbl.create 1
   method get = Protect.access mutex @@ fun () -> value
   method wait () =
     Protect.wait_access mutex (fun () -> value <> None) @@ fun () ->
@@ -16,11 +18,11 @@ object
 	value <- Some x;
 	callbacks
     in
-    List.iter (fun cb -> cb x) cbs;
+    BatInnerWeaktbl.iter (fun cb () -> cb x) cbs;
   method add_callback (cb : 'a -> unit) =
     (Protect.access mutex @@ fun () ->
       match value with
-      | None -> callbacks <- cb::callbacks; ignore
+      | None -> BatInnerWeaktbl.add callbacks cb (); ignore
       | Some x -> (fun () -> cb x)) ()
 end
 
