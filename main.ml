@@ -35,9 +35,27 @@ let source =
   let doc = "Source data" in  
   Arg.(required & pos 0 (some file) None & info [] ~doc)
 
+let map_converter f (parser, printer) =
+  let parser' str =
+    match parser str with
+    | (`Error _) as error -> error
+    | `Ok x ->  f x
+  in
+  (parser', printer)
+
+let check f error =
+  map_converter (
+    fun v ->
+      if not (f v)
+      then `Error error
+      else `Ok v
+  )
+
+let positive = check (fun x -> x >= 1) "Argument must be >= 1"
+
 let start_from_line =
   let doc = "Start transmitting beginning from this line (first line is 1)" in
-  Arg.(value & opt int 1 & info ["#"; "first-line"] ~doc)
+  Arg.(value & opt (positive int) 1 & info ["#"; "first-line"] ~doc)
 
 let default_prompt = 
   let doc = "A standalone G-code uploader for TinyG" in 
