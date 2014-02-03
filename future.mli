@@ -3,6 +3,7 @@ class ['a] t :
     method add_callback : ('a -> unit) -> unit
     method get		: 'a option
     method set		: 'a -> unit
+    method set_if_unset	: 'a -> bool	(* returns true if value was set *)
     method wait		: unit -> 'a
   end
 

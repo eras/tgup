@@ -1,10 +1,12 @@
 open Batteries
 
+module Weaktbl = BatInnerWeaktbl
+
 class ['a] t =
 object
   val mutex = Protect.create (Mutex.create ()) ()
   val mutable value : 'a option = None
-  val mutable callbacks : (('a -> unit), unit) BatInnerWeaktbl.t = BatInnerWeaktbl.create 1
+  val mutable callbacks : (('a -> unit), unit) Weaktbl.t = Weaktbl.create 1
   method get = Protect.access mutex @@ fun () -> value
   method wait () =
     Protect.wait_access mutex (fun () -> value <> None) @@ fun () ->
@@ -18,11 +20,23 @@ object
 	value <- Some x;
 	callbacks
     in
-    BatInnerWeaktbl.iter (fun cb () -> cb x) cbs;
+    Weaktbl.iter (fun cb () -> cb x) cbs;
+  method set_if_unset (x : 'a) =
+    let was_set, cbs =
+      Protect.access mutex @@ fun () ->
+	if value = None then (
+	  value <- Some x;
+	  (true, callbacks)
+	) else (
+	  (false, Weaktbl.create 0)
+	)
+    in
+    Weaktbl.iter (fun cb () -> cb x) cbs;
+    was_set
   method add_callback (cb : 'a -> unit) =
     (Protect.access mutex @@ fun () ->
       match value with
-      | None -> BatInnerWeaktbl.add callbacks cb (); ignore
+      | None -> Weaktbl.add callbacks cb (); ignore
       | Some x -> (fun () -> cb x)) ()
 end
 
