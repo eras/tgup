@@ -63,7 +63,7 @@ let queue_threshold = 20 (* once there are less than n slots available, don't se
 let activate future x = 
   future#set (`Ok x)
 
-let receiver (sigint_triggered, common_options, fd, signal_fd, task_queue) =
+let receiver (exited, sigint_triggered, common_options, fd, signal_fd, task_queue) =
   let queue_full = ref false in
   let command_queue : gcode_request Queue.t = Queue.create () in
   let lines_sent = ref 0 in
@@ -171,7 +171,8 @@ let receiver (sigint_triggered, common_options, fd, signal_fd, task_queue) =
   in
   ignore (Unix.write fd "%~" 0 2);
   let `Aiee = feed_lines () in
-  Printf.printf "Receiver finished\n%!"
+  Printf.printf "Receiver finished\n%!";
+  exited#set ()
 
 type t = {
   fd	     : Unix.file_descr;
@@ -244,7 +245,8 @@ let upload sigint_triggered common_options file start_from_line =
     let input_nlines = List.length input_gcode in
     let signal_fds = Unix.pipe () in
     let task_queue = Protect.create (Mutex.create ()) (Queue.create ()) in
-    let thread = Thread.create receiver (sigint_triggered, common_options, fd, fst signal_fds, task_queue) in
+    let exited = new Future.t in
+    let thread = Thread.create receiver (exited, sigint_triggered, common_options, fd, fst signal_fds, task_queue) in
     let t = { fd; signal_fd = Protect.create (Mutex.create ()) (ref (Some (snd signal_fds))); task_queue } in
     let ready = new Future.t in
     let t0 = Unix.gettimeofday () in
@@ -274,8 +276,7 @@ let upload sigint_triggered common_options file start_from_line =
 	  ready#set ()
     in
     feed_lines input_gcode 1;
-    ready#wait ();
-    Unix.sleep 5;
+    Future.wait [ready; exited];
     Protect.access t.signal_fd (
       function
       | { contents = None } -> assert false;

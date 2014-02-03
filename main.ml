@@ -69,7 +69,7 @@ let cmd_upload sigint_triggered =
 
 let sigint_triggered = new Future.t
 
-let sigint_handler _ = sigint_triggered#set ()
+let sigint_handler _ = ignore (sigint_triggered#set_if_unset ())
 
 let main () = 
   ignore (Sys.signal Sys.sigint (Sys.Signal_handle sigint_handler));
