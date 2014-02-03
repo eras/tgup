@@ -6,4 +6,8 @@ class ['a] t :
     method wait		: unit -> 'a
   end
 
-val map : ('a -> 'b) -> < add_callback : ('a -> unit) -> unit; .. > -> 'b t
+type ('a, 'b) future_cb = (< add_callback : ('a -> unit) -> unit; .. > as 'b)
+
+val map : ('a -> 'b) -> ('a, _) future_cb -> 'b t
+
+val wait : ('a, _) future_cb list -> 'a

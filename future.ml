@@ -26,7 +26,18 @@ object
       | Some x -> (fun () -> cb x)) ()
 end
 
-let map f x =
+type ('a, 'b) future_cb = (< add_callback : ('a -> unit) -> unit; .. > as 'b)
+
+let map f t =
   let future = new t in
-  x#add_callback (fun x -> future#set (f x));
+  t#add_callback (fun x -> future#set (f x));
   future
+
+let wait ts =
+  let future = new t in
+  List.iter 
+    (fun t ->
+      t#add_callback (fun x -> future#set x);
+    )
+    ts;
+  future#wait ()
