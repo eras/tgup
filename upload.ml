@@ -28,13 +28,16 @@ let get_linenumber (`Result result) =
   with Not_found -> None
 
 let get_tinyg str =
-  let a = get_assoc (Json.from_string str) in
-  try `Result (get_assoc (List.assoc "r" a))
-  with Not_found -> 
-    try `Status (get_assoc (List.assoc "sr" a))
-    with Not_found ->
-      try `Queue_report (get_int (List.assoc "qr" a))
-      with Not_found -> `Other a
+  try 
+    ( let a = get_assoc (Json.from_string str) in
+      try `Result (get_assoc (List.assoc "r" a))
+      with Not_found -> 
+	try `Status (get_assoc (List.assoc "sr" a))
+	with Not_found ->
+	  try `Queue_report (get_int (List.assoc "qr" a))
+	  with Not_found -> `Other a )
+  with Yojson.Json_error _ ->
+    `Parse_error
 
 type result = (string * Json.json) list
 
@@ -135,36 +138,42 @@ let receiver (ts : (_) tinyg_session) =
         | _ -> ()
           done;
           let strings = LineBuffer.append_substring lb buf 0 n in
+	  let error = ref false in
           List.iter
-        (fun str ->
-          if verbose then Printf.printf "<-%s\n%!" str;
-          match get_tinyg str with
-          | `Result result as full_result ->
-            ( match get_linenumber full_result with
-            | Some linenumber ->
-              let callback = Hashtbl.find rt.rt_line_callbacks linenumber in
-              Hashtbl.remove rt.rt_line_callbacks linenumber;
-              callback result
-            | None ->
-              Printf.printf "Response without linenumber\n%!"
+            (fun str ->
+              if verbose then Printf.printf "<-%s\n%!" str;
+              match get_tinyg str with
+              | `Result result as full_result ->
+		( match get_linenumber full_result with
+		| Some linenumber ->
+		  let callback = Hashtbl.find rt.rt_line_callbacks linenumber in
+		  Hashtbl.remove rt.rt_line_callbacks linenumber;
+		  callback result
+		| None ->
+		  Printf.printf "Response without linenumber\n%!"
+		)
+              | `Status status ->
+		let current_linenumber =
+		  try Some (get_int (List.assoc "line" status))
+		  with Not_found -> None in
+		( match current_linenumber with
+		| None -> ()
+		| Some _current_linenumber -> ()
+		)
+              | `Queue_report r ->
+		if debug then Printf.printf "**** Queue report: %d\n%!" r;
+		queue_full := r < queue_threshold;
+		flush_queue ()
+              | `Other _ ->
+		()
+	      | `Parse_error ->
+		Printf.printf "Problem parsing response from device: %s\n%!" str;
+		error := true;
             )
-          | `Status status ->
-            let current_linenumber =
-              try Some (get_int (List.assoc "line" status))
-              with Not_found -> None in
-            ( match current_linenumber with
-            | None -> ()
-            | Some _current_linenumber -> ()
-            )
-          | `Queue_report r ->
-            if debug then Printf.printf "**** Queue report: %d\n%!" r;
-            queue_full := r < queue_threshold;
-            flush_queue ()
-          | `Other _ ->
-            ()
-        )
-        strings;
-          feed_lines ()
+            strings;
+	  if not !error
+	  then feed_lines ()
+	  else `Aiee
         | _ when List.mem ts.ts_signal_fd rd ->
           let n = Unix.read ts.ts_signal_fd buf 0 1 in
           if n = 0 then
