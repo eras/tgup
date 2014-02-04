@@ -63,7 +63,16 @@ let queue_threshold = 20 (* once there are less than n slots available, don't se
 let activate future x = 
   future#set (`Ok x)
 
-let receiver (exited, sigint_triggered, common_options, fd, signal_fd, task_queue) =
+type ('b) tinyg_session = {
+  ts_exited           : (unit -> unit);                    (* function to signal that the thread has finished *)
+  ts_sigint_triggered : ((<get : unit option; ..>) as 'b); (* future that signals that an interrupt has been requested *)
+  ts_fd               : Unix.file_descr;                   (* the open fd *)
+  ts_signal_fd        : Unix.file_descr;                   (* fd usd to indicate there is data in the task_queue *)
+  ts_task_queue       : (rt -> unit) Queue.t Protect.t;    (* incoming external tasks requiring synchronization *)
+  ts_common_options   : Common.common_options;             (* common configuration *)
+}
+
+let receiver (ts : (_) tinyg_session) =
   let queue_full = ref false in
   let command_queue : gcode_request Queue.t = Queue.create () in
   let lines_sent = ref 0 in
@@ -93,26 +102,26 @@ let receiver (exited, sigint_triggered, common_options, fd, signal_fd, task_queu
     let do_send = not (Queue.is_empty write_queue) && !enable_send in
     let timeout = 
       if do_send
-      then 1.0 /. (float common_options.co_send_bps /. 8.0)
+      then 1.0 /. (float ts.ts_common_options.co_send_bps /. 8.0)
       else (-1.0)
     in
-    let (rd, _, _) = Unix.select [fd; signal_fd] [] [] timeout in
-    if sigint_triggered#get = Some () then
-      ( ( try ignore (Unix.write fd "!" 0 1);
+    let (rd, _, _) = Unix.select [ts.ts_fd; ts.ts_signal_fd] [] [] timeout in
+    if ts.ts_sigint_triggered#get = Some () then
+      ( ( try ignore (Unix.write ts.ts_fd "!" 0 1);
 	  with _ -> () );
 	`Aiee )
     else (
       if do_send then
 	let c = Queue.take write_queue in
 	buf.[0] <- c;
-	let n = Unix.write fd buf 0 1 in
+	let n = Unix.write ts.ts_fd buf 0 1 in
 	if n <= 0 then
 	  raise End_of_file
 	else ();
 	  else ();
         match () with
-        | _ when List.mem fd rd ->
-          let n = Unix.read fd buf 0 (String.length buf) in
+        | _ when List.mem ts.ts_fd rd ->
+          let n = Unix.read ts.ts_fd buf 0 (String.length buf) in
           if n = 0 then
         raise End_of_file;
           for c = 0 to n - 1 do
@@ -156,12 +165,12 @@ let receiver (exited, sigint_triggered, common_options, fd, signal_fd, task_queu
         )
         strings;
           feed_lines ()
-        | _ when List.mem signal_fd rd ->
-          let n = Unix.read signal_fd buf 0 1 in
+        | _ when List.mem ts.ts_signal_fd rd ->
+          let n = Unix.read ts.ts_signal_fd buf 0 1 in
           if n = 0 then
             `Aiee
           else
-            let task = Protect.access task_queue Queue.take in
+            let task = Protect.access ts.ts_task_queue Queue.take in
             task rt;
             flush_queue ();
             feed_lines ()
@@ -169,10 +178,10 @@ let receiver (exited, sigint_triggered, common_options, fd, signal_fd, task_queu
           feed_lines ()
         )
   in
-  ignore (Unix.write fd "%~" 0 2);
+  ignore (Unix.write ts.ts_fd "%~" 0 2);
   let `Aiee = feed_lines () in
   Printf.printf "Receiver finished\n%!";
-  exited#set ()
+  ts.ts_exited ()
 
 type t = {
   fd	     : Unix.file_descr;
@@ -246,7 +255,14 @@ let upload sigint_triggered common_options file start_from_line =
     let signal_fds = Unix.pipe () in
     let task_queue = Protect.create (Mutex.create ()) (Queue.create ()) in
     let exited = new Future.t in
-    let thread = Thread.create receiver (exited, sigint_triggered, common_options, fd, fst signal_fds, task_queue) in
+    let thread = Thread.create receiver {
+      ts_exited	  = exited#set;
+      ts_sigint_triggered = sigint_triggered;
+      ts_common_options   = common_options;
+      ts_fd		  = fd;
+      ts_signal_fd	  = fst signal_fds;
+      ts_task_queue	  = task_queue;
+    } in
     let t = { fd; signal_fd = Protect.create (Mutex.create ()) (ref (Some (snd signal_fds))); task_queue } in
     let ready = new Future.t in
     let t0 = Unix.gettimeofday () in
