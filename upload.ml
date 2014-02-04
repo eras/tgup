@@ -285,7 +285,7 @@ let upload sigint_triggered common_options file start_from_line =
 	Printf.printf "Done!\n%!";
 	ready#set ();
       | command::rest ->
-	(send_gcode t command)#add_callback @@ function
+	(send_gcode t command)#add_persistent_callback @@ function
 	| `Ok r -> 
 	  last_line_sent := Some linenumber;
 	  update_status linenumber;
