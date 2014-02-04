@@ -277,22 +277,28 @@ let upload sigint_triggered common_options file start_from_line =
       printf [Bold; green; on_default] "%s (%s)" (human_eta (int_of_float time_left)) (string_of_time time_finished);
       erase Eol;
     in
+    let last_line_sent = ref None in
     let rec feed_lines input linenumber =
       match input with
       | [] -> 
+	last_line_sent := None;
 	Printf.printf "Done!\n%!";
 	ready#set ();
       | command::rest ->
 	(send_gcode t command)#add_callback @@ function
 	| `Ok r -> 
+	  last_line_sent := Some linenumber;
 	  update_status linenumber;
 	  feed_lines rest (linenumber + 1)
 	| `Aborted -> 
 	  Printf.printf "Meh, error sending request!\n%!";
 	  ready#set ()
     in
-    feed_lines input_gcode 1;
+    feed_lines input_gcode start_from_line;
     Future.wait [ready; exited];
+    ( match !last_line_sent with
+    | None -> ()
+    | Some line -> Printf.printf "\nLast line sent: %d\n" line );
     Protect.access t.signal_fd (
       function
       | { contents = None } -> assert false;
