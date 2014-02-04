@@ -61,7 +61,7 @@ let map f t =
 
 let wait ts =
   let future = new t in
-  let callback = (fun x -> future#set x) in
+  let callback = (fun x -> ignore (future#set_if_unset x)) in
   future#add_dependency (fun () -> callback (assert false); assert false);
   List.iter 
     (fun t ->

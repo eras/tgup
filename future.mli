@@ -15,4 +15,6 @@ type ('a, 'b) future_cb = (< add_callback : ('a -> unit) -> unit; .. > as 'b)
 
 val map : ('a -> 'b) -> ('a, _) future_cb -> 'b t
 
+(* [wait futures] waits the first future to be active and returns that value. Note: It can be
+   non-deterministic which value is set if two futures are active simulatenously or upon entrance. *)
 val wait : ('a, _) future_cb list -> 'a
