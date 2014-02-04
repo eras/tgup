@@ -1,6 +1,8 @@
 type never
 type dependency = unit -> never (* used to keep a reference around, the function isn't actually called *)
 
+exception FutureAlreadySet
+
 class ['a] t :
   object
     method add_callback : ('a -> unit) -> dependency

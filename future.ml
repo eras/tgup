@@ -2,11 +2,13 @@ open Batteries
 
 module Weaktbl = BatInnerWeaktbl
 
+exception FutureAlreadySet
+
 type never
 type dependency = unit -> never (* used to keep a reference around, the function isn't actually called *)
 
 class ['a] t =
-object
+object (self : 'self)
   val mutex = Protect.create (Mutex.create ()) ()
   val mutable value : 'a option = None
   val mutable callbacks : (('a -> unit), unit) Weaktbl.t = Weaktbl.create 1
@@ -18,34 +20,29 @@ object
       match value with
       | None -> assert false
       | Some x -> x
-  method set (x : 'a) =
-    let (weak_cbs, persistent_cbs) =
-      Protect.access mutex @@ fun () ->
-	assert (value = None);
-	dependencies <- [];
-	value <- Some x;
-	let vs = (callbacks, persistent_callbacks) in
-	persistent_callbacks <- [];
-	vs
-    in
-    Weaktbl.iter (fun cb () -> cb x) weak_cbs;
-    List.iter (fun cb -> cb x) persistent_cbs;
-  method set_if_unset (x : 'a) =
-    let was_set, (weak_cbs, persistent_cbs) =
-      Protect.access mutex @@ fun () ->
-	if value = None then (
+  method private set_with_fallback : 'fallback_retval. 'a -> (bool -> (unit -> 'fallback_retval)) -> 'fallback_retval =
+    fun x fallback ->
+      (Protect.access mutex @@ fun () ->
+	if value = None then
+	  fallback false
+	else (
 	  dependencies <- [];
 	  value <- Some x;
-	  let vs = (true, (callbacks, persistent_callbacks)) in
+	  let (weak_cbs', persistent_cbs') = (callbacks, persistent_callbacks) in
 	  persistent_callbacks <- [];
-	  vs
-	) else (
-	  (false, (Weaktbl.create 0, []))
-	)
-    in
-    Weaktbl.iter (fun cb () -> cb x) weak_cbs;
-    List.iter (fun cb -> cb x) persistent_cbs;
-    was_set
+	  fun () ->
+	    Weaktbl.iter (fun cb () -> cb x) weak_cbs';
+	    List.iter (fun cb -> cb x) persistent_cbs';
+	    fallback true ()
+	)) ()
+  method set_if_unset (x : 'a) =
+    self#set_with_fallback x @@ function
+    | false -> const false
+    | true -> const true
+  method set (x : 'a) =
+    self#set_with_fallback x @@ function
+    | false -> raise FutureAlreadySet
+    | true -> const ()
   method add_persistent_callback (cb : 'a -> unit) : unit =
     (Protect.access mutex @@ fun () ->
       match value with
