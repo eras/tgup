@@ -187,7 +187,7 @@ let receiver (ts : (_) tinyg_session) =
           feed_lines ()
         )
   in
-  ignore (Unix.write ts.ts_fd "%" 0 2);
+  ignore (Unix.write ts.ts_fd "%" 0 1);
   let `Aiee = feed_lines () in
   Printf.printf "Receiver finished\n%!";
   ts.ts_exited ()
