@@ -219,7 +219,10 @@ let strip_comments str = Pcre.replace ~pat:"\\(.*\\)*" str
 let strip_whitespace str = Pcre.replace ~pat:"[\t ]" str
 
 let get_gcode lines =
-  lines |> Enum.map (strip_comments %> strip_whitespace) |> Enum.filter ((<>) "") |> List.of_enum
+  let combine_with_linenumbers xs = Enum.combine (Enum.range 1, xs) in
+  let map2nd f = Enum.map (fun (a, b) -> (a, f b)) in
+  let filter2nd f = Enum.filter (fun (_a, b) -> f b) in
+  lines |> combine_with_linenumbers |> map2nd (strip_comments %> strip_whitespace) |> filter2nd ((<>) "") |> List.of_enum
 
 let string_of_tm { Unix.tm_sec = sec;
                    tm_min = min;
@@ -287,27 +290,42 @@ let upload sigint_triggered common_options file start_from_line =
       erase Eol;
     in
     let last_line_sent = ref None in
-    let rec feed_lines input linenumber =
+    let last_line_with_positive_z = ref None in
+    let rec feed_lines input =
       match input with
       | [] -> 
 	last_line_sent := None;
 	Printf.printf "Done!\n%!";
 	ready#set ();
-      | command::rest ->
+      | (linenumber, command)::rest ->
+	let fragments = List.of_enum (GcodeParser.parse_gcode (Lexing.from_string command)) in
+	List.iter 
+	  (fun input ->
+	    let open GcodeParser in
+	    match input with
+	    | Move ((G0 | G1), { z = Some z }) when z > 0.0 ->
+	      Printf.printf "%d positive z: %s\n%!" linenumber command;
+	      last_line_with_positive_z := Some linenumber
+	    | _ -> ()
+	  ) fragments;
 	(send_gcode t command)#add_persistent_callback @@ function
 	| `Ok r -> 
 	  last_line_sent := Some linenumber;
 	  update_status linenumber;
-	  feed_lines rest (linenumber + 1)
+	  feed_lines rest;
 	| `Aborted -> 
 	  Printf.printf "Meh, error sending request!\n%!";
 	  ready#set ()
     in
-    feed_lines input_gcode start_from_line;
+    feed_lines (List.drop_while (fun (line, _) -> line < start_from_line) input_gcode);
     Future.wait [ready; exited];
+    Printf.printf "\n";
     ( match !last_line_sent with
     | None -> ()
-    | Some line -> Printf.printf "\nLast line sent: %d\n" line );
+    | Some line -> Printf.printf "Last line sent: %d\n" line );
+    ( match !last_line_with_positive_z with
+    | None -> ()
+    | Some line -> Printf.printf "Last G0/G1 line with positive Z: %d\n" line );
     Protect.access t.signal_fd (
       function
       | { contents = None } -> assert false;
