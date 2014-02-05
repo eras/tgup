@@ -23,7 +23,7 @@ object (self : 'self)
   method private set_with_fallback : 'fallback_retval. 'a -> (bool -> (unit -> 'fallback_retval)) -> 'fallback_retval =
     fun x fallback ->
       (Protect.access mutex @@ fun () ->
-	if value = None then
+	if value <> None then
 	  fallback false
 	else (
 	  dependencies <- [];
