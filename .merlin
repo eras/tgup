@@ -1,8 +1,10 @@
+S OCamlGcode
 B _build
+B _build/OCamlGcode
 FLG -w -40
 PKG batteries
 PKG cmdliner
 PKG yojson
 PKG pcre
 PKG ANSITerminal
-PKG gcode
+
