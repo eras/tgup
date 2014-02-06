@@ -1,4 +1,5 @@
-<*>: package(batteries), thread, package(cmdliner), package(yojson), package(pcre), package(ANSITerminal), package(gcode)
+<*>: package(batteries), thread, package(cmdliner), package(yojson), package(pcre), package(ANSITerminal)
+"OCamlGcode": include
 <*>: debug, annot
 <*>: no_warn_40
 
