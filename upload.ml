@@ -298,10 +298,10 @@ let upload sigint_triggered common_options file start_from_line =
 	Printf.printf "Done!\n%!";
 	ready#set ();
       | (linenumber, command)::rest ->
-	let fragments = List.of_enum (GcodeParser.parse_gcode (Lexing.from_string command)) in
+	let fragments = List.of_enum (Gcode.Parser.parse_gcode (Lexing.from_string command)) in
 	List.iter 
 	  (fun input ->
-	    let open GcodeParser in
+	    let open Gcode.Parser in
 	    match input with
 	    | Move ((G0 | G1), { z = Some z }) when z > 0.0 ->
 	      Printf.printf "%d positive z: %s\n%!" linenumber command;
