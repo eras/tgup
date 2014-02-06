@@ -303,7 +303,7 @@ let upload sigint_triggered common_options file start_from_line =
 	  (fun input ->
 	    let open Gcode.Parser in
 	    match input with
-	    | Move ((G0 | G1), { z = Some z }) when z > 0.0 ->
+	    | Move ((G0 | G1), { z = Some z }, _) when z > 0.0 ->
 	      Printf.printf "%d positive z: %s\n%!" linenumber command;
 	      last_line_with_positive_z := Some linenumber
 	    | _ -> ()
