@@ -83,6 +83,7 @@ let receiver (ts : (_) tinyg_session) =
     rt_line_callbacks = Hashtbl.create 1024;
     rt_send_gcode = fun x -> Queue.add x command_queue;
   } in
+  let first_line = ref false in 	(* first line is given amnesty for errors *)
   let write_queue = Queue.create () in
   let buf = String.create 1024 in
   let lb = LineBuffer.create () in
@@ -141,6 +142,8 @@ let receiver (ts : (_) tinyg_session) =
 	  let error = ref false in
           List.iter
             (fun str ->
+	      let was_first_line = !first_line in
+	      first_line := false;
               if verbose then Printf.printf "<-%s\n%!" str;
               match get_tinyg str with
               | `Result result as full_result ->
@@ -168,7 +171,9 @@ let receiver (ts : (_) tinyg_session) =
 		()
 	      | `Parse_error ->
 		Printf.printf "Problem parsing response from device: %s\n%!" str;
-		error := true;
+		if was_first_line
+		then Printf.printf "Letting it pass for the first line\n%!"
+		else error := true;
             )
             strings;
 	  if not !error
