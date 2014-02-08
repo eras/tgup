@@ -67,12 +67,16 @@ let cmd_upload sigint_triggered =
   Term.(pure (Upload.upload sigint_triggered) $ common_opts_t $ source $ start_from_line),
   Term.info "upload" ~version
 
+let cmd_align sigint_triggered = 
+  Term.(pure (Align.align sigint_triggered) $ common_opts_t),
+  Term.info "align" ~version
+
 let sigint_triggered = new Future.t
 
 let sigint_handler _ = ignore (sigint_triggered#set_if_unset ())
 
 let main () = 
   ignore (Sys.signal Sys.sigint (Sys.Signal_handle sigint_handler));
-  match Term.eval_choice default_prompt [cmd_upload sigint_triggered] with `Error _ -> exit 1 | _ -> exit 0
+  match Term.eval_choice default_prompt [cmd_upload sigint_triggered; cmd_align sigint_triggered] with `Error _ -> exit 1 | _ -> exit 0
 
 let _ = main ()
