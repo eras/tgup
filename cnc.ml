@@ -136,8 +136,8 @@ let send msg (handle_response : ('a -> unit) -> unit -> receive_handler * receiv
   fun () ->
     (( fun t ->
 	 let msg = Printf.sprintf "N%d %s" t.line msg in
-	 let checksum = BatString.explode msg |> List.map Char.code |> List.fold_left (lxor) 0 in
-	 let msg = Printf.sprintf "%s*%d" msg checksum in
+	 (* let checksum = BatString.explode msg |> List.map Char.code |> List.fold_left (lxor) 0 in *)
+	 (* let msg = Printf.sprintf "%s*%d" msg checksum in *)
 	 let _ = Printf.printf "->CNC: %s\n%!" msg in
 	 let msg = msg ^ "\n" in
 	   ignore (Unix.write t.fd msg 0 (String.length msg));
