@@ -7,4 +7,6 @@ PKG cmdliner
 PKG yojson
 PKG pcre
 PKG ANSITerminal
+PKG lablgtk2
+PKG v4l2
 
