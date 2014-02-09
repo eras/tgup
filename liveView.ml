@@ -83,6 +83,13 @@ let view (width, height) ?(angle=0.0) ?packing () =
       draw cr (float allocation.Gtk.width) (float allocation.Gtk.height);
       false
   in
+  let on_button_press = ref (fun xy -> ()) in
+  let interface = object
+    method set_image ((width, height), rgb_data) =
+      image := Some (image_of_rgb (width, height) rgb_data, width, height);
+      drawing_area#misc#draw None
+    method on_button_press = on_button_press
+  end in
   let button_pressed ev =
     ( match !inverse_transformation_matrix with
     | None -> ()
@@ -90,6 +97,7 @@ let view (width, height) ?(angle=0.0) ?packing () =
       let (x, y) = (GdkEvent.Button.x ev, GdkEvent.Button.y ev) in
       let (x', y') = Cairo.Matrix.transform_point matrix ~x ~y in
       Printf.printf "Pressed at %f, %f\n%!" x' y';
+      !on_button_press (x', y');
       ()
     );
     true
@@ -98,10 +106,5 @@ let view (width, height) ?(angle=0.0) ?packing () =
   drawing_area#event#add [`EXPOSURE];
   ignore (drawing_area#event#connect#button_press button_pressed);
   drawing_area#event#add [`BUTTON_PRESS];
-  let interface = object
-    method set_image ((width, height), rgb_data) =
-      image := Some (image_of_rgb (width, height) rgb_data, width, height);
-      drawing_area#misc#draw None
-  end in
   drawing_area#misc#draw None;
   interface
