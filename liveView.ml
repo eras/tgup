@@ -37,6 +37,7 @@ let image_of_rgb (width, height) rgb_data =
 let view (width, height) ?(angle=0.0) ?packing () =
   let drawing_area = GMisc.drawing_area ?packing ~width ~height () in
   let image = ref None in
+  let inverse_transformation_matrix = ref None in
   let draw cr width height =
     let open Cairo in
     let r = 0.25 *. width in
@@ -59,10 +60,17 @@ let view (width, height) ?(angle=0.0) ?packing () =
 	then (height /. im_height, height /. im_height)
 	else (width /. im_width, width /. im_width)
       in
-      translate cr ~y:(im_width /. 2.0) ~x:(im_height /. 2.0);
-      rotate cr angle;
-      translate cr ~x:(~-. im_width /. 2.0) ~y:(~-. im_height /. 2.0);
-      scale cr x_scale y_scale;
+      let matrix = Matrix.init_identity () in
+      Matrix.translate matrix ~y:(im_width /. 2.0) ~x:(im_height /. 2.0);
+      Matrix.rotate matrix angle;
+      Matrix.translate matrix ~x:(~-. im_width /. 2.0) ~y:(~-. im_height /. 2.0);
+      Matrix.scale matrix x_scale y_scale;
+
+      set_matrix cr matrix;
+
+      Matrix.invert matrix;
+      inverse_transformation_matrix := Some matrix;
+
       set_source_surface cr image ~x:0.0 ~y:0.0;
       rectangle cr 0.0 0.0 im_width im_height;
       fill cr
@@ -75,8 +83,21 @@ let view (width, height) ?(angle=0.0) ?packing () =
       draw cr (float allocation.Gtk.width) (float allocation.Gtk.height);
       false
   in
+  let button_pressed ev =
+    ( match !inverse_transformation_matrix with
+    | None -> ()
+    | Some matrix ->
+      let (x, y) = (GdkEvent.Button.x ev, GdkEvent.Button.y ev) in
+      let (x', y') = Cairo.Matrix.transform_point matrix ~x ~y in
+      Printf.printf "Pressed at %f, %f\n%!" x' y';
+      ()
+    );
+    true
+  in
   ignore (drawing_area#event#connect#expose expose);
   drawing_area#event#add [`EXPOSURE];
+  ignore (drawing_area#event#connect#button_press button_pressed);
+  drawing_area#event#add [`BUTTON_PRESS];
   let interface = object
     method set_image ((width, height), rgb_data) =
       image := Some (image_of_rgb (width, height) rgb_data, width, height);
