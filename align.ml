@@ -13,7 +13,7 @@ let ba_of_string str =
   done;
   ba
 
-let gui () =
+let gui config =
   let video = V4l2.init "/dev/video0" { width = 640; height = 480 } in
 
   let main_window = GWindow.window ~border_width:10 () in
@@ -21,8 +21,12 @@ let gui () =
   ignore (main_window#connect#destroy ~callback:destroy);
   let vbox = GPack.vbox ~packing:main_window#add () in
   let quit_button = GButton.button ~label:"Quit" ~packing:(vbox#pack ~expand:false) () in
+  let _ = GMisc.separator `HORIZONTAL ~packing:(vbox#pack ~fill:true ~padding:5) () in
+  let hbox = GPack.hbox ~packing:vbox#add () in
   ignore (quit_button#connect#clicked ~callback:destroy);
-  let liveview = LiveView.view ~packing:vbox#add (640, 480) () in
+  let liveview = LiveView.view ~packing:hbox#add (640, 480) () in
+  let cnc = Cnc.connect config.Common.co_device config.Common.co_bps in
+  let cnc_control = CncControl.view ~packing:(hbox#pack ~expand:false ~padding:5) cnc () in
   let io_watch = ref None in
   let t0 = Unix.gettimeofday () in
   let frames = ref 0 in
@@ -63,4 +67,4 @@ let gui () =
   GMain.Main.main ()
 
 let align sigint_triggered config = 
-  gui ()
+  gui config
