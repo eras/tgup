@@ -9,4 +9,6 @@ PKG pcre
 PKG ANSITerminal
 PKG lablgtk2
 PKG v4l2
+PKG cairo2
+PKG cairo2.lablgtk2
 
