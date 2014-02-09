@@ -61,7 +61,7 @@ let reader (fd, state) =
 	       Printf.printf "CNC<-%s\n%!" str;
 	       let handler : (receive_handler * receive_finish) option =
 		 match str with
-		   | "ok" ->
+		   | str when Pcre.pmatch ~pat:"ok" str ->
 		       (match handler with
 			  | None -> BatOption.may (fun (_, finish) -> finish ()) (get_next_handler ())
 			  | Some (_, finish) -> finish ());
