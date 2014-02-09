@@ -47,7 +47,7 @@ let gui () =
 	GMain.Idle.add @@ fun () ->
 	  GMain.Idle.remove (Option.get !id);
 	  let frame = V4l2.get_frame video in
-	  let rgb = ba_of_string frame#rgb in
+	  let rgb = frame#rgb_ba in
 	  let now = Unix.gettimeofday () in
 	  incr frames;
 	  Printf.printf "%d %.2f  \r%!" !frames (float !frames /. (now -. t0));
