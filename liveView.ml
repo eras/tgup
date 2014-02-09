@@ -11,13 +11,14 @@ let show_exn f =
     Printf.printf "Exception: %s (%s)\n%!" (Printexc.to_string exn) (Printexc.get_backtrace ());
     raise exn
 
-let convert_rgb_to_rgbx (width, height) rgb_data =
+let image_of_rgb (width, height) rgb_data =
   let open Bigarray in
   let open Array1 in
-  let stride = Cairo.Image.stride_for_width RGB24 width in
-  let rgbx_data = create int8_unsigned c_layout (stride * height) in
+  let image = Cairo.Image.create Cairo.Image.RGB24  ~width ~height in
+  let stride = Cairo.Image.get_stride image in
+  let rgbx_data = Cairo.Image.get_data8 image in
   for y = 0 to height - 1 do
-    let wr = ref (y * stride) in
+    let wr = ref (y * stride * 4) in
     let rd = ref (y * width * 3) in
     for x = 0 to width - 1 do
       for c = 0 to 2 do
@@ -31,7 +32,7 @@ let convert_rgb_to_rgbx (width, height) rgb_data =
       (* rd := !rd + 3; *)
     done
   done;
-  (stride, rgbx_data)
+  image
 
 let view (width, height) ?packing () =
   let drawing_area = GMisc.drawing_area ?packing ~width ~height () in
@@ -75,9 +76,7 @@ let view (width, height) ?packing () =
   drawing_area#event#add [`EXPOSURE];
   let interface = object
     method set_image ((width, height), rgb_data) =
-      let format = Cairo.Image.RGB24 in
-      let (stride, rgb_data) = convert_rgb_to_rgbx (width, height) rgb_data in
-      image := Some (Cairo.Image.create_for_data8 ~stride rgb_data format width height, width, height);
+      image := Some (image_of_rgb (width, height) rgb_data, width, height);
       drawing_area#misc#draw None
   end in
   drawing_area#misc#draw None;
