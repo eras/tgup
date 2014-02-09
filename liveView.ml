@@ -62,7 +62,7 @@ let view (width, height) ?packing () =
       let cr = Cairo_gtk.create drawing_area#misc#window in
       let allocation = drawing_area#misc#allocation in
       draw cr (float allocation.Gtk.width) (float allocation.Gtk.height);
-      true
+      false
   in
   ignore (drawing_area#event#connect#expose expose);
   drawing_area#event#add [`EXPOSURE];
@@ -73,4 +73,5 @@ let view (width, height) ?packing () =
       image := Some (Cairo.Image.create_for_data8 ~stride rgb_data format width height, width, height);
       drawing_area#misc#draw None
   end in
+  drawing_area#misc#draw None;
   interface
