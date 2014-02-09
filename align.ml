@@ -32,6 +32,24 @@ let gui config =
   let io_watch = ref None in
   let t0 = Unix.gettimeofday () in
   let frames = ref 0 in
+  let points = ref [] in
+  liveview#overlay := (fun cairo ->
+    let open Cairo in
+    set_source_rgba cairo 1.0 0.0 0.0 0.5;
+    flip List.iter !points @@ fun ((x, y), _) ->
+      arc cairo x y 10.0 0.0 pi2;
+      fill cairo
+  );
+  liveview#on_button_press := (fun xy ->
+    points := (xy, cnc_control#get_position)::!points;
+    match !points with
+    | (xy1, cnc_xy1)::(xy2, cnc_xy2)::rest ->
+      let open Vector in
+      let dxy = sub_vector xy2 xy1 in
+      let dcnc_xy = sub_vector cnc_xy2 cnc_xy1 in
+      Printf.printf "Angle: %f\n%!" ((acos (dot2 dxy dcnc_xy /. length dxy /. length dcnc_xy)) /. pi2 *. 360.0);
+    | _ -> ()
+  );
   let rec wait_io () = 
     io_watch := Some (
       GMain.Io.add_watch
