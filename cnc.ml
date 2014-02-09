@@ -119,7 +119,7 @@ let connect device bps =
   } in
   let _ = Unix.tcsetattr fd Unix.TCSANOW tio in
   let receiver =
-    Protect.make (Mutex.create ())
+    Protect.create (Mutex.create ())
       { received_ack    = 1;
 	line_callbacks	= BatDeque.empty }
   in
