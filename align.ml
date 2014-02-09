@@ -36,7 +36,6 @@ let gui () =
     ~cond:[`IN]
     ~callback:update_image
     (GMain.Io.channel_of_descr (V4l2.get_fd video));
-  GMain.Timeout.add ~ms:100 ~callback:(fun _ -> update_image []; true);
   main_window#show ();
   GMain.Main.main ()
 
