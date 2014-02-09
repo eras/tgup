@@ -23,10 +23,8 @@ let gui () =
   ignore (quit_button#connect#clicked ~callback:destroy);
   let liveview = LiveView.view ~packing:vbox#add (640, 480) () in
   let update_image conditions =
-    Printf.printf "IO readable..\n%!";
     let frame = V4l2.get_frame video in
     let rgb = ba_of_string frame#rgb in
-    Printf.printf "size: %d\n%!" (Bigarray.Array1.dim rgb);
     liveview#set_image ((640, 480), rgb);
     true
   in

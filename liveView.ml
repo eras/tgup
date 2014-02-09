@@ -16,7 +16,6 @@ let convert_rgb_to_rgbx (width, height) rgb_data =
   let open Array1 in
   let stride = Cairo.Image.stride_for_width RGB24 width in
   let rgbx_data = create int8_unsigned c_layout (stride * height) in
-  Printf.printf "width: %d\n%!" width;
   for y = 0 to height - 1 do
     for x = 0 to width - 1 do
       for c = 0 to 2 do
@@ -71,7 +70,6 @@ let view (width, height) ?packing () =
     method set_image ((width, height), rgb_data) =
       let format = Cairo.Image.RGB24 in
       let (stride, rgb_data) = convert_rgb_to_rgbx (width, height) rgb_data in
-      Printf.printf "%d,%d %d\n%!" width height (Bigarray.Array1.dim rgb_data);
       image := Some (Cairo.Image.create_for_data8 ~stride rgb_data format width height, width, height);
       drawing_area#misc#draw None
   end in
