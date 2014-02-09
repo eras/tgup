@@ -73,38 +73,4 @@ let view (width, height) ?packing () =
       image := Some (Cairo.Image.create_for_data8 ~stride rgb_data format width height, width, height);
       drawing_area#misc#draw None
   end in
-  (* let count = ref 0 in  *)
-  (* let received_data (data : BoundaryDecoder.data) = *)
-  (*   show_exn @@ fun () -> *)
-  (*     let content_length = int_of_string (List.assoc "Content-Length" data.data_header) in *)
-  (*     (\* Printf.printf "Received data (%d/%d bytes)\n%!" (String.length data.data_content) content_length; *\) *)
-  (*     if save_images then ( *)
-  (* 	let filename = Printf.sprintf "output/%04d.jpg" !count in *)
-  (* 	incr count; *)
-  (* 	output_file ~filename ~text:data.data_content; *)
-  (*     ); *)
-  (*     match Jpeg.decode_int Jpeg.rgb4 (Jpeg.array_of_string data.data_content) with *)
-  (*     | Some jpeg_image -> *)
-  (* 	let (width, height) = (jpeg_image.Jpeg.image_width, jpeg_image.Jpeg.image_height) in *)
-  (* 	let rgb_data = jpeg_image.Jpeg.image_data in *)
-  (* 	image := Some (Cairo.Image.create_for_data8 rgb_data Cairo.Image.RGB24 width height, width, height); *)
-  (* 	drawing_area#misc#draw None *)
-  (*     | None -> *)
-  (* 	() *)
-  (* in *)
   interface
-
-(* let main () = *)
-(*   let http_mt = make_http_mt () in *)
-(*   let main_window = GWindow.window ~border_width:10 () in *)
-(*   Gobject.set GtkBaseProps.Window.P.allow_shrink main_window#as_window true; *)
-(*   ignore (main_window#connect#destroy ~callback:destroy); *)
-(*   let vbox = GPack.vbox ~packing:main_window#add () in *)
-(*   let quit_button = GButton.button ~label:"Quit" ~packing:(vbox#pack ~expand:false) () in *)
-(*   ignore (quit_button#connect#clicked ~callback:destroy); *)
-(*   let urls = read_streams () in *)
-(*   List.iter (fun url -> ignore (view url http_mt ~packing:vbox#add ())) urls; *)
-(*   main_window#show (); *)
-(*   GMain.Main.main () *)
-
-(* let _ = main () *)
