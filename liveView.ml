@@ -34,7 +34,7 @@ let image_of_rgb (width, height) rgb_data =
   done;
   image
 
-let view (width, height) ?packing () =
+let view (width, height) ?(angle=0.0) ?packing () =
   let drawing_area = GMisc.drawing_area ?packing ~width ~height () in
   let image = ref None in
   let draw cr width height =
@@ -59,6 +59,9 @@ let view (width, height) ?packing () =
 	then (height /. im_height, height /. im_height)
 	else (width /. im_width, width /. im_width)
       in
+      translate cr ~y:(im_width /. 2.0) ~x:(im_height /. 2.0);
+      rotate cr angle;
+      translate cr ~x:(~-. im_width /. 2.0) ~y:(~-. im_height /. 2.0);
       scale cr x_scale y_scale;
       set_source_surface cr image ~x:0.0 ~y:0.0;
       rectangle cr 0.0 0.0 im_width im_height;
