@@ -38,6 +38,7 @@ let view (width, height) ?(angle=0.0) ?packing () =
   let drawing_area = GMisc.drawing_area ?packing ~width ~height () in
   let image = ref None in
   let inverse_transformation_matrix = ref None in
+  let overlay = ref (fun cairo -> ()) in
   let draw cr width height =
     let open Cairo in
     let r = 0.25 *. width in
@@ -73,7 +74,8 @@ let view (width, height) ?(angle=0.0) ?packing () =
 
       set_source_surface cr image ~x:0.0 ~y:0.0;
       rectangle cr 0.0 0.0 im_width im_height;
-      fill cr
+      fill cr;
+      !overlay cr
   in
   let expose ev =
     show_exn @@ fun () ->
@@ -89,6 +91,7 @@ let view (width, height) ?(angle=0.0) ?packing () =
       image := Some (image_of_rgb (width, height) rgb_data, width, height);
       drawing_area#misc#draw None
     method on_button_press = on_button_press
+    method overlay = overlay
   end in
   let button_pressed ev =
     ( match !inverse_transformation_matrix with
