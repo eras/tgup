@@ -1,6 +1,8 @@
 open Batteries
 open Gtk
 
+let pi2 = 8. *. atan 1.
+
 let destroy () =
   GMain.Main.quit ()
 
@@ -24,7 +26,7 @@ let gui config =
   let _ = GMisc.separator `HORIZONTAL ~packing:(vbox#pack ~fill:true ~padding:5) () in
   let hbox = GPack.hbox ~packing:vbox#add () in
   ignore (quit_button#connect#clicked ~callback:destroy);
-  let liveview = LiveView.view ~packing:hbox#add (640, 480) () in
+  let liveview = LiveView.view ~packing:hbox#add ~angle:(15.0 *. ~-. pi2 /. 64.0) (640, 480) () in
   let cnc = Cnc.connect config.Common.co_device config.Common.co_bps in
   let cnc_control = CncControl.view ~packing:(hbox#pack ~expand:false ~padding:5) cnc () in
   let io_watch = ref None in
