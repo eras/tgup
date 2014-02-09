@@ -3,9 +3,13 @@ type 'a request
 type t
 val connect : string -> int -> t
 val name_of_axis : [< `X | `Y | `Z ] -> string
+val set_absolute : unit request
+val set_relative : unit request
 val set_position : [< `X of float | `Y of float | `Z of float ] list -> unit request
 val home : [< `X | `Y | `Z ] list -> unit request
-val move : [< `X of float | `Y of float | `Z of float ] list -> unit request
+val feed : [< `X of float | `Y of float | `Z of float ] list -> unit request
+val travel : [< `X of float | `Y of float | `Z of float ] list -> unit request
+val set_feed_rate : float -> unit request
 val set_acceleration : [< `X of float | `Y of float | `Z of float ] list -> unit request
 val set_step_speed : float -> unit request
 val where : (float * float * float) request

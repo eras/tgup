@@ -174,9 +174,17 @@ let string_of_axis axis =
   |> List.map (uncurry (Printf.sprintf "%s%.3f"))
   |> String.concat " "
 
-let move axis = send ("G1 " ^ string_of_axis axis) unit_response
+let travel axis = send ("G0 " ^ string_of_axis axis) unit_response
+
+let feed axis = send ("G1 " ^ string_of_axis axis) unit_response
       
 let set_position axis = send ("G92 " ^ string_of_axis axis) unit_response
+
+let set_absolute = send ("G91") unit_response
+
+let set_feed_rate rate = send ("F" ^ string_of_float rate) unit_response
+
+let set_relative = send ("G91") unit_response
 
 let set_acceleration axis = send ("M201 " ^ string_of_axis axis) unit_response
 
