@@ -1,3 +1,4 @@
+open Batteries
 open Gtk
 
 let destroy () =
@@ -22,18 +23,42 @@ let gui () =
   let quit_button = GButton.button ~label:"Quit" ~packing:(vbox#pack ~expand:false) () in
   ignore (quit_button#connect#clicked ~callback:destroy);
   let liveview = LiveView.view ~packing:vbox#add (640, 480) () in
-  let update_image conditions =
-    let frame = V4l2.get_frame video in
-    let rgb = ba_of_string frame#rgb in
-    liveview#set_image ((640, 480), rgb);
+  let io_watch = ref None in
+  let t0 = Unix.gettimeofday () in
+  let frames = ref 0 in
+  let rec wait_io () = 
+    io_watch := Some (
+      GMain.Io.add_watch
+	~cond:[`IN]
+	~callback:update_image
+	(GMain.Io.channel_of_descr (V4l2.get_fd video))
+    )
+  and unwait_io () =
+    match !io_watch with
+    | None -> ()
+    | Some id ->
+      GMain.Io.remove id;
+      io_watch := None
+  and update_image conditions =
+    unwait_io ();
+    let id = ref None in
+    id := 
+      Some ( 
+	GMain.Idle.add @@ fun () ->
+	  GMain.Idle.remove (Option.get !id);
+	  let frame = V4l2.get_frame video in
+	  let rgb = ba_of_string frame#rgb in
+	  let now = Unix.gettimeofday () in
+	  incr frames;
+	  Printf.printf "%d %.2f  \r%!" !frames (float !frames /. (now -. t0));
+	  liveview#set_image ((640, 480), rgb);
+	  wait_io ();
+	  false 
+      );
     true
   in
   V4l2.start video;
-  update_image [];
-  GMain.Io.add_watch
-    ~cond:[`IN]
-    ~callback:update_image
-    (GMain.Io.channel_of_descr (V4l2.get_fd video));
+  ignore (update_image []);
   main_window#show ();
   GMain.Main.main ()
 
