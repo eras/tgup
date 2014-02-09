@@ -17,11 +17,18 @@ let convert_rgb_to_rgbx (width, height) rgb_data =
   let stride = Cairo.Image.stride_for_width RGB24 width in
   let rgbx_data = create int8_unsigned c_layout (stride * height) in
   for y = 0 to height - 1 do
+    let wr = ref (y * stride) in
+    let rd = ref (y * width * 3) in
     for x = 0 to width - 1 do
       for c = 0 to 2 do
-	rgbx_data.{y * stride + (x * 4) + c} <-
-	  rgb_data.{y * width * 3 + (x * 3) + c}
-      done
+      	unsafe_set rgbx_data !wr (unsafe_get rgb_data !rd);
+      	incr wr;
+      	incr rd;
+      done;
+      incr wr;
+      (* blit (sub rgb_data !rd 3) (sub rgbx_data !wr 3); *)
+      (* wr := !wr + 4; *)
+      (* rd := !rd + 3; *)
     done
   done;
   (stride, rgbx_data)
