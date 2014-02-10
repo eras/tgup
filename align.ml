@@ -15,6 +15,8 @@ let ba_of_string str =
   done;
   ba
 
+let flip_y (a, b) = (a, ~-. b)
+
 let gui config =
   let video = V4l2.init "/dev/video0" { width = 640; height = 480 } in
 
@@ -33,6 +35,7 @@ let gui config =
   let t0 = Unix.gettimeofday () in
   let frames = ref 0 in
   let points = ref [] in
+  let camera_to_world = ref None in
   liveview#overlay := (fun cairo ->
     let open Cairo in
     set_source_rgba cairo 1.0 0.0 0.0 0.5;
@@ -42,16 +45,32 @@ let gui config =
   );
   liveview#on_button_press := (fun xy ->
     points := (xy, cnc_control#get_position)::!points;
-    match !points with
-    | (xy1, cnc_xy1)::_::_ ->
+    match !camera_to_world, !points with
+    | None, (xy1, cnc_xy1)::_::_ ->
       let (xy2, cnc_xy2) = List.hd (List.rev !points) in
       let open Vector in
-      let flip_y (a, b) = (a, ~-. b) in
       let dxy = flip_y @@ sub_vector xy2 xy1 in
       let dcnc_xy = sub_vector cnc_xy2 cnc_xy1 in
       Printf.printf "image point: (%f,%f)\n" (fst dxy) (snd dxy);
       Printf.printf "cnc point: (%f,%f)\n" (fst dcnc_xy) (snd dcnc_xy);
-      Printf.printf "Angle: %f\n%!" ((acos (dot2 dxy dcnc_xy /. length dxy /. length dcnc_xy)) /. pi2 *. 360.0);
+      let angle = (acos (dot2 dxy dcnc_xy /. length dxy /. length dcnc_xy)) in
+      Printf.printf "Angle: %f\n%!" (angle /. pi2 *. 360.0);
+      let scale' = length dcnc_xy /. length dxy in
+      Printf.printf "Scale: %f\n%!" scale';
+
+      let open Gg in
+      let open M3 in
+      let m = id in
+      let m = mul m (rot angle) in
+      let m = mul m (scale2 (V2.v scale' scale')) in
+      camera_to_world := Some m;
+    | Some camera_to_world, (xy1, _)::_::_ ->
+      let (xy2, cnc_xy2) = List.hd (List.rev !points) in
+      let dxy = flip_y @@ Vector.sub_vector xy2 xy1 in
+      let open Gg.V2 in
+      let point = tr camera_to_world (v (fst dxy) (snd dxy)) in
+      Cnc.ignore cnc (Cnc.travel [`X ~-.(x point); `Y ~-.(y point)]);
+      Printf.printf "World: %f, %f\n%!" (x point) (y point)
     | _ -> ()
   );
   let rec wait_io () = 
