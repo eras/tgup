@@ -1,4 +1,4 @@
-<*>: package(batteries), thread, package(cmdliner), package(yojson), package(pcre), package(ANSITerminal), package(v4l2)
+<*>: package(batteries), thread, package(cmdliner), package(yojson), package(pcre), package(ANSITerminal), package(v4l2), package(gg)
 "OCamlGcode": include
 "OcamlV4l2": -traverse
 "ocamlfind": -traverse
