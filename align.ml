@@ -43,10 +43,14 @@ let gui config =
   liveview#on_button_press := (fun xy ->
     points := (xy, cnc_control#get_position)::!points;
     match !points with
-    | (xy1, cnc_xy1)::(xy2, cnc_xy2)::rest ->
+    | (xy1, cnc_xy1)::_::_ ->
+      let (xy2, cnc_xy2) = List.hd (List.rev !points) in
       let open Vector in
-      let dxy = sub_vector xy2 xy1 in
+      let flip_y (a, b) = (a, ~-. b) in
+      let dxy = flip_y @@ sub_vector xy2 xy1 in
       let dcnc_xy = sub_vector cnc_xy2 cnc_xy1 in
+      Printf.printf "image point: (%f,%f)\n" (fst dxy) (snd dxy);
+      Printf.printf "cnc point: (%f,%f)\n" (fst dcnc_xy) (snd dcnc_xy);
       Printf.printf "Angle: %f\n%!" ((acos (dot2 dxy dcnc_xy /. length dxy /. length dcnc_xy)) /. pi2 *. 360.0);
     | _ -> ()
   );
