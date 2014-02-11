@@ -17,6 +17,8 @@ let ba_of_string str =
 
 let flip_y (a, b) = (a, ~-. b)
 
+let p2_to_tuple p = Gg.P2.(x p, y p)
+
 let gui config =
   let video = V4l2.init "/dev/video0" { width = 640; height = 480 } in
 
@@ -28,7 +30,7 @@ let gui config =
   let _ = GMisc.separator `HORIZONTAL ~packing:(vbox#pack ~fill:true ~padding:5) () in
   let hbox = GPack.hbox ~packing:vbox#add () in
   ignore (quit_button#connect#clicked ~callback:destroy);
-  let liveview = LiveView.view ~packing:hbox#add ~angle:(15.0 *. ~-. pi2 /. 64.0) (640, 480) () in
+  let liveview = LiveView.view ~packing:hbox#add (* ~angle:(15.0 *. ~-. pi2 /. 64.0) *) (640, 480) () in
   let cnc = Cnc.connect config.Common.co_device config.Common.co_bps in
   let cnc_control = CncControl.view ~packing:(hbox#pack ~expand:false ~padding:5) cnc () in
   let io_watch = ref None in
@@ -36,12 +38,29 @@ let gui config =
   let frames = ref 0 in
   let points = ref [] in
   let camera_to_world = ref None in
+  let point_mapping = ref None in
   liveview#overlay := (fun cairo ->
     let open Cairo in
     set_source_rgba cairo 1.0 0.0 0.0 0.5;
-    flip List.iter !points @@ fun ((x, y), _) ->
+    flip List.iter !points @@ fun (((x : float), (y : float)), _) ->
+      let (x, y) = Gg.(p2_to_tuple @@ P2.tr (Option.default M3.id !point_mapping) (P2.v x y)) in
+      Printf.printf "Resulting point: %f, %f\n%!" x y;
       arc cairo x y 10.0 0.0 pi2;
       fill cairo
+  );
+  cnc_control#position_adjust_callback := (fun (x_ofs, y_ofs) ->
+    match !camera_to_world with
+    | None -> ()
+    | Some camera_to_world ->
+      let world_to_camera = Gg.M3.inv camera_to_world in
+      Printf.printf "Moved by %f, %f\n%!" x_ofs y_ofs;
+      let cnc_movement = Gg.M3.move (Gg.V2.v x_ofs y_ofs) in
+      Printf.printf "Matrix: %s\n%!" (Gg.M3.to_string cnc_movement);
+      Printf.printf "Translation of 0.0: %s\n%!" (Gg.M3.to_string cnc_movement);
+      let ( * ) = Gg.M3.mul in
+      let orig = (match !point_mapping with None -> camera_to_world | Some m -> camera_to_world * m) in
+      point_mapping := Some (world_to_camera * cnc_movement * orig);
+      Printf.printf "Point mapping: %s\n%!" (Gg.M3.to_string (Option.get !point_mapping));
   );
   liveview#on_button_press := (fun xy ->
     points := (xy, cnc_control#get_position)::!points;
@@ -63,14 +82,20 @@ let gui config =
       let m = id in
       let m = mul m (rot angle) in
       let m = mul m (scale2 (V2.v scale' scale')) in
+      liveview#set_angle (angle +. pi);
       camera_to_world := Some m;
-    | Some camera_to_world, (xy1, _)::_::_ ->
-      let (xy2, cnc_xy2) = List.hd (List.rev !points) in
+    | Some camera_to_world, (xy1, _)::(xy2, _)::_ ->
+      (* let (xy2, _) = List.hd (List.rev !points) in *)
       let dxy = flip_y @@ Vector.sub_vector xy2 xy1 in
-      let open Gg.V2 in
+      let open Gg.P2 in
       let point = tr camera_to_world (v (fst dxy) (snd dxy)) in
-      Cnc.ignore cnc (Cnc.travel [`X ~-.(x point); `Y ~-.(y point)]);
-      Printf.printf "World: %f, %f\n%!" (x point) (y point)
+      (* Cnc.wait cnc (Cnc.set_feed_rate 100.0); *)
+      (* Cnc.wait cnc Cnc.set_absolute; *)
+      (* Cnc.wait cnc (Cnc.travel [`X ~-.(x point); `Y ~-.(y point)]); *)
+      Printf.printf "World: %f, %f\n%!" (x point) (y point);
+      assert (abs_float (x point) < 5.0);
+      assert (abs_float (y point) < 5.0);
+      cnc_control#adjust_position (~-. (x point)) (~-. (y point));
     | _ -> ()
   );
   let rec wait_io () = 
