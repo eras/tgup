@@ -39,6 +39,7 @@ let view (width, height) ?(angle=0.0) ?packing () =
   let image = ref None in
   let inverse_transformation_matrix = ref None in
   let overlay = ref (fun cairo -> ()) in
+  let angle = ref angle in
   let draw cr width height =
     let open Cairo in
     let r = 0.25 *. width in
@@ -63,7 +64,7 @@ let view (width, height) ?(angle=0.0) ?packing () =
       in
       let matrix = Matrix.init_identity () in
       Matrix.translate matrix ~y:(im_width /. 2.0) ~x:(im_height /. 2.0);
-      Matrix.rotate matrix angle;
+      Matrix.rotate matrix !angle;
       Matrix.translate matrix ~x:(~-. im_width /. 2.0) ~y:(~-. im_height /. 2.0);
       Matrix.scale matrix x_scale y_scale;
 
@@ -92,6 +93,7 @@ let view (width, height) ?(angle=0.0) ?packing () =
       drawing_area#misc#draw None
     method on_button_press = on_button_press
     method overlay = overlay
+    method set_angle a = angle := a
   end in
   let button_pressed ev =
     ( match !inverse_transformation_matrix with
