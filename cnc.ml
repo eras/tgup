@@ -180,7 +180,7 @@ let feed axis = send ("G1 " ^ string_of_axis axis) unit_response
       
 let set_position axis = send ("G92 " ^ string_of_axis axis) unit_response
 
-let set_absolute = send ("G91") unit_response
+let set_absolute = send ("G90") unit_response
 
 let set_feed_rate rate = send ("F" ^ string_of_float rate) unit_response
 
