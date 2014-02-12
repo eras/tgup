@@ -73,16 +73,17 @@ let view (width, height) ?(angle=0.0) ?packing () =
 
       set_matrix cr matrix;
 
-      (* Matrix.scale matrix 1.0 ~-.1.0; *)
-      ( let tmp = dup_matrix matrix in
-	Matrix.scale tmp 1.0 ~-.1.0;
-	Matrix.invert tmp;
-	inverse_transformation_matrix := Some tmp);
-
       set_source_surface cr image ~x:(~-.im_width /. 2.0) ~y:(~-.im_height /. 2.0);
       rectangle cr (~-.im_width /. 2.0) (im_height /. 2.0) (im_width -. 1.0) (~-.im_height -. 1.0);
       fill cr;
+
       Matrix.scale matrix 1.0 ~-.1.0;
+
+      ( let tmp = dup_matrix matrix in
+	(* Matrix.scale tmp 1.0 ~-.1.0; *)
+	Matrix.invert tmp;
+	inverse_transformation_matrix := Some tmp);
+
       set_matrix cr matrix;
       !overlay cr
   in
