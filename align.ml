@@ -41,6 +41,9 @@ let gui config =
   let point_mapping = ref Gg.M3.id in
   liveview#overlay := (fun cairo ->
     let open Cairo in
+    set_source_rgba cairo 0.0 1.0 0.0 0.5;
+    arc cairo 0.0 0.0 20.0 0.0 pi2;
+    fill cairo;
     set_source_rgba cairo 1.0 0.0 0.0 0.5;
     flip List.iter !points @@ fun (((x : float), (y : float)), _) ->
       let (x, y) = Gg.(p2_to_tuple @@ P2.tr !point_mapping (P2.v x y)) in
@@ -53,13 +56,13 @@ let gui config =
     | None -> ()
     | Some camera_to_world ->
       let open Gg in
-      let world_to_camera = M3.inv camera_to_world in
-      Printf.printf "Moved by %f, %f\n%!" x_ofs y_ofs;
-      let cnc_movement = M3.move (V2.v x_ofs (~-.y_ofs)) in
-      Printf.printf "Matrix: %s\n%!" (M3.to_string cnc_movement);
-      Printf.printf "Translation of 0.0: %s\n%!" (M3.to_string cnc_movement);
       let ( * ) = M3.mul in
       let ( *| ) a b = M3.mul b a in
+      let world_to_camera = M3.inv camera_to_world in
+      Printf.printf "Moved by %f, %f\n%!" x_ofs y_ofs;
+      let cnc_movement = M3.move (V2.v ~-.x_ofs ~-.y_ofs) in
+      Printf.printf "Matrix: %s\n%!" (M3.to_string cnc_movement);
+      Printf.printf "Translation of 0.0: %s\n%!" (M3.to_string cnc_movement);
       let orig = camera_to_world * !point_mapping in
       point_mapping := world_to_camera * ((M3.scale2 @@ V2.v 1.0 1.0) *| cnc_movement) * orig;
 
@@ -71,7 +74,7 @@ let gui config =
     | None, (xy1, cnc_xy1)::_::_ ->
       let (xy2, cnc_xy2) = List.hd (List.rev !points) in
       let open Vector in
-      let dxy = flip_y @@ sub_vector xy2 xy1 in
+      let dxy = sub_vector xy2 xy1 in
       let dcnc_xy = sub_vector cnc_xy2 cnc_xy1 in
       Printf.printf "image point: (%f,%f)\n" (fst dxy) (snd dxy);
       Printf.printf "cnc point: (%f,%f)\n" (fst dcnc_xy) (snd dcnc_xy);
@@ -85,12 +88,12 @@ let gui config =
       let m = id in
       let m = mul m (rot angle) in
       let m = mul m (scale2 (V2.v scale' scale')) in
-      liveview#set_angle (angle +. pi);
+      liveview#set_angle (angle -. pi);
       camera_to_world := Some m;
     | Some camera_to_world, (xy1, _)::_::_ ->
       (* Move the most recently clicked point over the first clicked point *)
       let (xy2, _) = List.hd (List.rev !points) in
-      let dxy = flip_y @@ Vector.sub_vector xy2 xy1 in
+      let dxy = Vector.sub_vector xy2 xy1 in
       let open Gg.P2 in
       let absolute = tr camera_to_world (v (fst dxy) (snd dxy)) in
       (* Cnc.wait cnc (Cnc.set_feed_rate 100.0); *)
@@ -98,7 +101,7 @@ let gui config =
       (* Cnc.wait cnc (Cnc.travel [`X ~-.(x absolute); `Y ~-.(y absolute)]); *)
       Printf.printf "World: %f, %f\n%!" (x absolute) (y absolute);
       let (cnc_x, cnc_y) = cnc_control#get_position in
-      let (delta_x, delta_y) = (cnc_x -. (x absolute), cnc_y -. (y absolute)) in
+      let (delta_x, delta_y) = (x absolute -. cnc_x, y absolute -. cnc_y) in
       cnc_control#adjust_position delta_x delta_y;
     | _ -> ()
   );

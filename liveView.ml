@@ -34,48 +34,56 @@ let image_of_rgb (width, height) rgb_data =
   done;
   image
 
+let dup_matrix (m : Cairo.matrix) = { m with Cairo.xx = m.Cairo.xx }
+
 let view (width, height) ?(angle=0.0) ?packing () =
   let drawing_area = GMisc.drawing_area ?packing ~width ~height () in
   let image = ref None in
   let inverse_transformation_matrix = ref None in
   let overlay = ref (fun cairo -> ()) in
   let angle = ref angle in
-  let draw cr width height =
+  let draw cr area_width area_height =
     let open Cairo in
-    let r = 0.25 *. width in
+    let r = 0.25 *. area_width in
     set_source_rgba cr 0. 1. 0. 0.5;
     match !image with
     | None -> 
-      arc cr (0.5 *. width) (0.35 *. height) r 0. pi2;
+      arc cr (0.5 *. area_width) (0.35 *. area_height) r 0. pi2;
       fill cr;
     (* set_source_rgba cr 1. 0. 0. 0.5; *)
-      arc cr (0.35 *. width) (0.65 *. height) r 0. pi2;
+      arc cr (0.35 *. area_width) (0.65 *. area_height) r 0. pi2;
       fill cr;
     (* set_source_rgba cr 0. 0. 1. 0.5; *)
-      arc cr (0.65 *. width) (0.65 *. height) r 0. pi2;
+      arc cr (0.65 *. area_width) (0.65 *. area_height) r 0. pi2;
       fill cr
     | Some (image, image_width, image_height) ->
       let (im_width, im_height) = (float image_width, float image_height) in
       let aspect = im_width /. im_height in
       let x_scale, y_scale =
-	if width /. height > aspect 
-	then (height /. im_height, height /. im_height)
-	else (width /. im_width, width /. im_width)
+	if area_width /. area_height > aspect 
+	then (area_height /. im_height, area_height /. im_height)
+	else (area_width /. im_width, area_width /. im_width)
       in
       let matrix = Matrix.init_identity () in
       Matrix.translate matrix ~y:(im_width /. 2.0) ~x:(im_height /. 2.0);
       Matrix.rotate matrix !angle;
       Matrix.translate matrix ~x:(~-. im_width /. 2.0) ~y:(~-. im_height /. 2.0);
       Matrix.scale matrix x_scale y_scale;
+      Matrix.translate matrix ~x:(area_width /. 2.0) ~y:(area_height /. 2.0);
 
       set_matrix cr matrix;
 
-      Matrix.invert matrix;
-      inverse_transformation_matrix := Some matrix;
+      (* Matrix.scale matrix 1.0 ~-.1.0; *)
+      ( let tmp = dup_matrix matrix in
+	Matrix.scale tmp 1.0 ~-.1.0;
+	Matrix.invert tmp;
+	inverse_transformation_matrix := Some tmp);
 
-      set_source_surface cr image ~x:0.0 ~y:0.0;
-      rectangle cr 0.0 0.0 im_width im_height;
+      set_source_surface cr image ~x:(~-.im_width /. 2.0) ~y:(~-.im_height /. 2.0);
+      rectangle cr (~-.im_width /. 2.0) (im_height /. 2.0) (im_width -. 1.0) (~-.im_height -. 1.0);
       fill cr;
+      Matrix.scale matrix 1.0 ~-.1.0;
+      set_matrix cr matrix;
       !overlay cr
   in
   let expose ev =
