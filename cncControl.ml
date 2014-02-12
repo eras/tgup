@@ -12,6 +12,8 @@ let view ~packing cnc () =
     cnc_x := !cnc_x +. x_ofs;
     cnc_y := !cnc_y +. y_ofs;
     !position_adjust_callback (x_ofs, y_ofs);
+    assert (abs_float x_ofs < 5.0);
+    assert (abs_float y_ofs < 5.0);
     Cnc.wait cnc (Cnc.set_feed_rate 100.0);
     Cnc.wait cnc Cnc.set_relative;
     Cnc.ignore cnc (Cnc.travel [`X x_ofs; `Y y_ofs])
