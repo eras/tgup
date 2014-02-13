@@ -30,7 +30,7 @@ let gui config =
   let _ = GMisc.separator `HORIZONTAL ~packing:(vbox#pack ~fill:true ~padding:5) () in
   let hbox = GPack.hbox ~packing:vbox#add () in
   ignore (quit_button#connect#clicked ~callback:destroy);
-  let liveview = LiveView.view ~packing:hbox#add (* ~angle:(15.0 *. ~-. pi2 /. 64.0) *) (640, 480) () in
+  let liveview = LiveView.view ~packing:hbox#add (640, 480) () in
   let cnc = Cnc.connect config.Common.co_device config.Common.co_bps in
   let cnc_control = CncControl.view ~packing:(hbox#pack ~expand:false ~padding:5) cnc () in
   let io_watch = ref None in
@@ -74,28 +74,28 @@ let gui config =
     | None, (xy1, cnc_xy1)::_::_ ->
       let open Gg in
       let (xy2, cnc_xy2) = List.hd (List.rev !points) in
-      let dxy = V2.sub xy2 xy1 in
-      let dcnc_xy = V2.sub cnc_xy2 cnc_xy1 in
-      Printf.printf "image point: (%f,%f)\n" (V2.x dxy) (V2.y dxy);
+      let dcam_xy = V2.sub xy2 xy1 in
+      let dcnc_xy = V2.add cnc_xy2 cnc_xy1 in (* consider cnc movement to the opposing direction negative *)
+      Printf.printf "image point: (%f,%f)\n" (V2.x dcam_xy) (V2.y dcam_xy);
       Printf.printf "cnc point: (%f,%f)\n" (V2.x dcnc_xy) (V2.y dcnc_xy);
-      let angle = (acos (V2.dot dxy dcnc_xy /. V2.norm dxy /. V2.norm dcnc_xy)) in
+      let angle = V2.angle dcnc_xy -. V2.angle dcam_xy in
       Printf.printf "Angle: %f\n%!" (angle /. pi2 *. 360.0);
-      let scale' = V2.norm dcnc_xy /. V2.norm dxy in
+      let scale' = V2.norm dcnc_xy /. V2.norm dcam_xy in
       Printf.printf "Scale: %f\n%!" scale';
 
       let open M3 in
       let m = id in
       let m = mul m (rot angle) in
       let m = mul m (scale2 (V2.v scale' scale')) in
-      liveview#set_angle (angle -. Gg.Float.pi);
+      liveview#set_angle angle;
       camera_to_world := Some m;
     | Some camera_to_world, (xy1, _)::_::_ ->
       (* Move the most recently clicked point over the first clicked point *)
       let open Gg in
       let (xy2, _) = List.hd (List.rev !points) in
-      let dxy = V2.sub xy2 xy1 in
+      let dcam_xy = V2.sub xy2 xy1 in
       let open P2 in
-      let absolute = tr camera_to_world (v (V2.x dxy) (V2.y dxy)) in
+      let absolute = tr camera_to_world dcam_xy in
       (* Cnc.wait cnc (Cnc.set_feed_rate 100.0); *)
       (* Cnc.wait cnc Cnc.set_absolute; *)
       (* Cnc.wait cnc (Cnc.travel [`X ~-.(x absolute); `Y ~-.(y absolute)]); *)

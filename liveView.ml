@@ -66,7 +66,7 @@ let view (width, height) ?(angle=0.0) ?packing () =
       in
       let matrix = Matrix.init_identity () in
       Matrix.translate matrix ~y:(im_width /. 2.0) ~x:(im_height /. 2.0);
-      Matrix.rotate matrix !angle;
+      Matrix.rotate matrix (-. !angle);
       Matrix.translate matrix ~x:(~-. im_width /. 2.0) ~y:(~-. im_height /. 2.0);
       Matrix.scale matrix x_scale y_scale;
       Matrix.translate matrix ~x:(area_width /. 2.0) ~y:(area_height /. 2.0);
