@@ -96,11 +96,13 @@ let view (width, height) ?(angle=0.0) ?packing () =
       false
   in
   let on_button_press = ref (fun xy -> ()) in
+  let on_mouse_move = ref (fun xy -> ()) in
   let interface = object
     method set_image ((width, height), rgb_data) =
       image := Some (image_of_rgb (width, height) rgb_data, width, height);
       drawing_area#misc#draw None
     method on_button_press = on_button_press
+    method on_mouse_move = on_mouse_move
     method overlay = overlay
     method set_angle a = angle := a
   end in
@@ -116,9 +118,22 @@ let view (width, height) ?(angle=0.0) ?packing () =
     );
     true
   in
+  let mouse_moved ev =
+    ( match !inverse_transformation_matrix with
+    | None -> ()
+    | Some matrix ->
+      let (x, y) = (GdkEvent.Motion.x ev, GdkEvent.Motion.y ev) in
+      let (x', y') = Cairo.Matrix.transform_point matrix ~x ~y in
+      !on_mouse_move (x', y');
+      ()
+    );
+    true
+  in
   ignore (drawing_area#event#connect#expose expose);
   drawing_area#event#add [`EXPOSURE];
   ignore (drawing_area#event#connect#button_press button_pressed);
+  ignore (drawing_area#event#connect#motion_notify mouse_moved);
   drawing_area#event#add [`BUTTON_PRESS];
+  drawing_area#event#add [`POINTER_MOTION];
   drawing_area#misc#draw None;
   interface
