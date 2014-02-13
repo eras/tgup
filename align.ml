@@ -49,7 +49,7 @@ let gui config =
     set_source_rgba cairo 1.0 0.0 0.0 0.5;
     flip List.iter !points @@ fun ((xy), _) ->
       let (x, y) = Gg.(p2_to_tuple @@ P2.tr !point_mapping xy) in
-      Printf.printf "Resulting point: %f, %f\n%!" x y;
+      (* Printf.printf "Resulting point: %f, %f\n%!" x y; *)
       arc cairo x y 10.0 0.0 pi2;
       fill cairo
   );
