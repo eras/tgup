@@ -35,27 +35,52 @@ let source =
   let doc = "Source data" in  
   Arg.(required & pos 0 (some file) None & info [] ~doc)
 
-let map_converter f (parser, printer) =
-  let parser' str =
-    match parser str with
-    | (`Error _) as error -> error
-    | `Ok x ->  f x
-  in
-  (parser', printer)
+module Arg =
+struct
+  include Arg
 
-let check f error =
-  map_converter (
-    fun v ->
-      if not (f v)
-      then `Error error
-      else `Ok v
-  )
+  let map f_parser f_printer (parser, printer) =
+    let parser' str =
+      match parser str with
+      | (`Error _) as error -> error
+      | `Ok x -> 
+	match f_parser x with
+	| (`Error _) as error -> error
+	| (`Ok x) as ok -> ok
+    in
+    let printer' fmt v =
+      printer fmt (f_printer v)
+    in
+    (parser', printer')
 
-let positive = check (fun x -> x >= 1) "Argument must be >= 1"
+  let check f error =
+    map 
+      (fun v ->
+	if not (f v)
+	then `Error error
+	else `Ok v)
+      identity
+
+  let positive = check (fun x -> x >= 1) "Argument must be >= 1"
+
+  let ok x = `Ok x
+end
+
+let affine_matrix_of_list_parser xs =
+  match xs with
+  | e00::e01::e02::e10::e11::e12::[] -> `Ok (Gg.M3.v e00 e01 e02 e10 e11 e12 0.0 0.0 1.0)
+  | _ -> `Error "Invalid number of elements (needs 6)"
+
+let list_of_matrix m3 =
+  Gg.M3.([e00 m3; e01 m3; e02 m3; e10 m3; e11 m3; e12 m3])
 
 let start_from_line =
   let doc = "Start transmitting beginning from this line (first line is 1)" in
   Arg.(value & opt (positive int) 1 & info ["#"; "first-line"] ~doc)
+
+let camera_matrix =
+  let doc = "Define camera matrix" in
+  Arg.(value & opt (some @@ map affine_matrix_of_list_parser list_of_matrix @@ list float) None & info ["camera-matrix"] ~doc)
 
 let default_prompt = 
   let doc = "A standalone G-code uploader for TinyG" in 
@@ -68,7 +93,7 @@ let cmd_upload sigint_triggered =
   Term.info "upload" ~version
 
 let cmd_align sigint_triggered = 
-  Term.(pure (Align.align sigint_triggered) $ common_opts_t),
+  Term.(pure (Align.align sigint_triggered) $ common_opts_t $ camera_matrix),
   Term.info "align" ~version
 
 let sigint_triggered = new Future.t

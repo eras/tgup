@@ -19,7 +19,9 @@ let flip_y (a, b) = (a, ~-. b)
 
 let p2_to_tuple p = Gg.P2.(x p, y p)
 
-let gui config =
+let angle_of_matrix m3 = Gg.(V2.angle (V2.tr m3 (V2.v 1.0 0.0)))
+
+let gui config camera_matrix_arg =
   let video = V4l2.init "/dev/video0" { width = 640; height = 480 } in
 
   let main_window = GWindow.window ~border_width:10 () in
@@ -30,7 +32,8 @@ let gui config =
   let _ = GMisc.separator `HORIZONTAL ~packing:(vbox#pack ~fill:true ~padding:5) () in
   let hbox = GPack.hbox ~packing:vbox#add () in
   ignore (quit_button#connect#clicked ~callback:destroy);
-  let liveview = LiveView.view ~packing:hbox#add (640, 480) () in
+  let camera_to_world = ref camera_matrix_arg in
+  let liveview = LiveView.view ~angle:(Option.map_default angle_of_matrix 0.0 !camera_to_world) ~packing:hbox#add (640, 480) () in
   let cnc = Cnc.connect config.Common.co_device config.Common.co_bps in
   let control_box = GPack.vbox ~packing:(hbox#pack ~expand:false ~padding:5) () in
   let cnc_control = CncControl.view ~packing:(control_box#pack) cnc () in
@@ -39,7 +42,6 @@ let gui config =
   let t0 = Unix.gettimeofday () in
   let frames = ref 0 in
   let points = ref [] in
-  let camera_to_world = ref None in
   let point_mapping = ref Gg.M3.id in
   liveview#overlay := (fun cairo ->
     let open Cairo in
@@ -93,7 +95,7 @@ let gui config =
 	let m = id in
 	let m = mul m (rot angle) in
 	let m = mul m (scale2 (V2.v scale' scale')) in
-	liveview#set_angle angle;
+	liveview#set_angle (angle_of_matrix m);
 	Printf.printf "camera_to_world: %s\n%!" (M3.to_string m);
 	camera_to_world := Some m;
       | _ -> ()
