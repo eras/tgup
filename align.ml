@@ -83,7 +83,7 @@ let gui config camera_matrix_arg =
 	let open Gg in
 	let (xy2, cnc_xy2) = List.hd (List.rev !points) in
 	let dcam_xy = V2.sub xy2 xy1 in
-	let dcnc_xy = V2.add cnc_xy2 cnc_xy1 in (* consider cnc movement to the opposing direction negative *)
+	let dcnc_xy = V2.sub cnc_xy1 cnc_xy2 in (* consider cnc movement to the opposing direction negative *)
 	Printf.printf "image point: (%f,%f)\n" (V2.x dcam_xy) (V2.y dcam_xy);
 	Printf.printf "cnc point: (%f,%f)\n" (V2.x dcnc_xy) (V2.y dcnc_xy);
 	let angle = V2.angle dcnc_xy -. V2.angle dcam_xy in
