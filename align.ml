@@ -32,7 +32,9 @@ let gui config =
   ignore (quit_button#connect#clicked ~callback:destroy);
   let liveview = LiveView.view ~packing:hbox#add (640, 480) () in
   let cnc = Cnc.connect config.Common.co_device config.Common.co_bps in
-  let cnc_control = CncControl.view ~packing:(hbox#pack ~expand:false ~padding:5) cnc () in
+  let control_box = GPack.vbox ~packing:(hbox#pack ~expand:false ~padding:5) () in
+  let cnc_control = CncControl.view ~packing:(control_box#pack) cnc () in
+  let info = GMisc.label ~packing:(control_box#pack) () in
   let io_watch = ref None in
   let t0 = Unix.gettimeofday () in
   let frames = ref 0 in
@@ -69,48 +71,57 @@ let gui config =
       Printf.printf "Point mapping: %s\n%!" (M3.to_string !point_mapping);
   );
   liveview#on_button_press := (fun xy ->
-    points := (Gg.V2.of_tuple xy, Gg.V2.of_tuple cnc_control#get_position)::!points;
-    match !camera_to_world, !points with
-    | None, (xy1, cnc_xy1)::_::_ ->
-      let open Gg in
-      let (xy2, cnc_xy2) = List.hd (List.rev !points) in
-      let dcam_xy = V2.sub xy2 xy1 in
-      let dcnc_xy = V2.add cnc_xy2 cnc_xy1 in (* consider cnc movement to the opposing direction negative *)
-      Printf.printf "image point: (%f,%f)\n" (V2.x dcam_xy) (V2.y dcam_xy);
-      Printf.printf "cnc point: (%f,%f)\n" (V2.x dcnc_xy) (V2.y dcnc_xy);
-      let angle = V2.angle dcnc_xy -. V2.angle dcam_xy in
-      Printf.printf "Angle: %f\n%!" (angle /. pi2 *. 360.0);
-      let scale' = V2.norm dcnc_xy /. V2.norm dcam_xy in
-      Printf.printf "Scale: %f\n%!" scale';
+    let cam_xy = Gg.V2.of_tuple xy in
+    Printf.printf "Clicked at %s\n%!" (Gg.V2.to_string cam_xy);
+    match !camera_to_world with
+    | None -> 
+      points := (cam_xy, Gg.V2.of_tuple cnc_control#get_position)::!points;
+      ( match !points with
+      | (xy1, cnc_xy1)::_::_ ->
+	let open Gg in
+	let (xy2, cnc_xy2) = List.hd (List.rev !points) in
+	let dcam_xy = V2.sub xy2 xy1 in
+	let dcnc_xy = V2.add cnc_xy2 cnc_xy1 in (* consider cnc movement to the opposing direction negative *)
+	Printf.printf "image point: (%f,%f)\n" (V2.x dcam_xy) (V2.y dcam_xy);
+	Printf.printf "cnc point: (%f,%f)\n" (V2.x dcnc_xy) (V2.y dcnc_xy);
+	let angle = V2.angle dcnc_xy -. V2.angle dcam_xy in
+	Printf.printf "Angle: %f\n%!" (angle /. pi2 *. 360.0);
+	let scale' = V2.norm dcnc_xy /. V2.norm dcam_xy in
+	Printf.printf "Scale: %f\n%!" scale';
 
-      let open M3 in
-      let m = id in
-      let m = mul m (rot angle) in
-      let m = mul m (scale2 (V2.v scale' scale')) in
-      liveview#set_angle angle;
-      camera_to_world := Some m;
-    | Some camera_to_world, (xy1, _)::_::_ ->
-      (* Move the most recently clicked point over the first clicked point *)
+	let open M3 in
+	let m = id in
+	let m = mul m (rot angle) in
+	let m = mul m (scale2 (V2.v scale' scale')) in
+	liveview#set_angle angle;
+	Printf.printf "camera_to_world: %s\n%!" (M3.to_string m);
+	camera_to_world := Some m;
+      | _ -> ()
+      )
+    | Some camera_to_world->
+      (* Move the most recently clicked point over the center *)
       let open Gg in
-      let (xy2, _) = List.hd (List.rev !points) in
-      let dcam_xy = V2.sub xy2 xy1 in
-      let open P2 in
-      let absolute = tr camera_to_world dcam_xy in
-      (* Cnc.wait cnc (Cnc.set_feed_rate 100.0); *)
-      (* Cnc.wait cnc Cnc.set_absolute; *)
-      (* Cnc.wait cnc (Cnc.travel [`X ~-.(x absolute); `Y ~-.(y absolute)]); *)
-      Printf.printf "World: %f, %f\n%!" (x absolute) (y absolute);
-      let (cnc_x, cnc_y) = cnc_control#get_position in
-      let (delta_x, delta_y) = (x absolute -. cnc_x, y absolute -. cnc_y) in
-      cnc_control#adjust_position delta_x delta_y;
+      let move = P2.tr camera_to_world cam_xy in
+      cnc_control#adjust_position (V2.x move) (V2.y move);
     | _ -> ()
+  );
+  liveview#on_mouse_move := (fun xy ->
+    let cam_xy = Gg.V2.of_tuple xy in
+    match !camera_to_world with
+    | None -> ()
+    | Some camera_to_world ->
+      let open Gg in
+      let world_to_camera = M3.inv camera_to_world in
+      let cam_in_world = V2.tr camera_to_world cam_xy in
+      info#set_label (Printf.sprintf "%s\n%s" (V2.to_string cam_xy) (V2.to_string cam_in_world));
+      ()
   );
   let rec wait_io () = 
     io_watch := Some (
       GMain.Io.add_watch
-	~cond:[`IN]
-	~callback:update_image
-	(GMain.Io.channel_of_descr (V4l2.get_fd video))
+        ~cond:[`IN]
+        ~callback:update_image
+        (GMain.Io.channel_of_descr (V4l2.get_fd video))
     )
   and unwait_io () =
     match !io_watch with
