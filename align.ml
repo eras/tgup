@@ -17,8 +17,6 @@ let ba_of_string str =
 
 let flip_y (a, b) = (a, ~-. b)
 
-let p2_to_tuple p = Gg.P2.(x p, y p)
-
 let angle_of_matrix m3 = Gg.(V2.angle (V2.tr m3 (V2.v 1.0 0.0)))
 
 let gui config camera_matrix_arg =
@@ -50,7 +48,7 @@ let gui config camera_matrix_arg =
     fill cairo;
     set_source_rgba cairo 1.0 0.0 0.0 0.5;
     flip List.iter !points @@ fun ((xy), _) ->
-      let (x, y) = Gg.(p2_to_tuple @@ P2.tr !point_mapping xy) in
+      let (x, y) = Gg.(V2.to_tuple @@ P2.tr !point_mapping xy) in
       (* Printf.printf "Resulting point: %f, %f\n%!" x y; *)
       arc cairo x y 10.0 0.0 pi2;
       fill cairo
