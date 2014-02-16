@@ -71,6 +71,10 @@ let reader (fd, state) =
 	    | None -> None
 	    | Some (Cont f, _finish) -> 
 	      let (_handler, finish) = f (to_string r) in
+	      Protect.access state (
+		fun st ->
+		  st.received_ack <- st.received_ack + 1;
+	      );
 	      finish ();
 	      None
 	    )
