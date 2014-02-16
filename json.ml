@@ -1,6 +1,6 @@
 include Yojson.Safe
 
-let rec ( @-> ) assoc key =
+let rec ( +> ) assoc key =
   match (assoc : json option) with
   | None -> None
   | Some (`Assoc assoc) ->

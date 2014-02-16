@@ -59,7 +59,7 @@ let reader (fd, state) =
 	let process_json handler str =
 	  let open Json in
 	  let json = from_string str in
-	  match Some json @-> "r" with
+	  match Some json +> "r" with
 	  | None -> (* don't handle these at the moment *) handler
 	  | Some r ->
 	    let handler =
