@@ -40,7 +40,7 @@ let view (width, height) ?(angle=0.0) ?packing () =
   let drawing_area = GMisc.drawing_area ?packing ~width ~height () in
   let image = ref None in
   let inverse_transformation_matrix = ref None in
-  let overlay = ref (fun cairo -> ()) in
+  let overlay = Hook.create () in
   let angle = ref angle in
   let draw cr area_width area_height =
     let open Cairo in
@@ -85,7 +85,7 @@ let view (width, height) ?(angle=0.0) ?packing () =
 	inverse_transformation_matrix := Some tmp);
 
       set_matrix cr matrix;
-      !overlay cr
+      Hook.issue overlay cr
   in
   let expose ev =
     show_exn @@ fun () ->
@@ -95,8 +95,8 @@ let view (width, height) ?(angle=0.0) ?packing () =
       draw cr (float allocation.Gtk.width) (float allocation.Gtk.height);
       false
   in
-  let on_button_press = ref (fun xy -> ()) in
-  let on_mouse_move = ref (fun xy -> ()) in
+  let on_button_press = Hook.create () in
+  let on_mouse_move = Hook.create () in
   let interface = object
     method set_image ((width, height), rgb_data) =
       image := Some (image_of_rgb (width, height) rgb_data, width, height);
@@ -113,7 +113,7 @@ let view (width, height) ?(angle=0.0) ?packing () =
       let (x, y) = (GdkEvent.Button.x ev, GdkEvent.Button.y ev) in
       let (x', y') = Cairo.Matrix.transform_point matrix ~x ~y in
       Printf.printf "Pressed at %f, %f\n%!" x' y';
-      !on_button_press (x', y');
+      ignore (Hook.issue on_button_press (x', y'));
       ()
     );
     true
@@ -124,7 +124,7 @@ let view (width, height) ?(angle=0.0) ?packing () =
     | Some matrix ->
       let (x, y) = (GdkEvent.Motion.x ev, GdkEvent.Motion.y ev) in
       let (x', y') = Cairo.Matrix.transform_point matrix ~x ~y in
-      !on_mouse_move (x', y');
+      ignore (Hook.issue on_mouse_move (x', y'));
       ()
     );
     true

@@ -154,16 +154,16 @@ let gui config camera_matrix_arg =
     method video	   = video
     method cnc_control	   = cnc_control
   end in
-  liveview#overlay := draw_overlay env;
+  ignore (Hook.hook liveview#overlay (draw_overlay env));
   cnc_control#position_adjust_callback := cnc_moved env;
-  liveview#on_button_press := (fun xy ->
+  ignore (Hook.hook liveview#on_button_press (fun xy ->
     let cam_xy = Gg.V2.of_tuple xy in
     Printf.printf "Clicked at %s\n%!" (Gg.V2.to_string cam_xy);
     match !camera_to_world with
     | None -> add_calibration_point env (cam_xy, Gg.V2.of_tuple cnc_control#get_position);
     | Some camera_to_world-> move_cnc env cam_xy camera_to_world
-  );
-  liveview#on_mouse_move := show_location env;
+  ));
+  ignore (Hook.hook liveview#on_mouse_move (show_location env));
   image_updater env ();
   main_window#show ();
   GMain.Main.main ()
