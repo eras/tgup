@@ -155,7 +155,7 @@ let gui config camera_matrix_arg =
     method cnc_control	   = cnc_control
   end in
   ignore (Hook.hook liveview#overlay (draw_overlay env));
-  cnc_control#position_adjust_callback := cnc_moved env;
+  ignore (Hook.hook cnc_control#position_adjust_callback (cnc_moved env));
   ignore (Hook.hook liveview#on_button_press (fun xy ->
     let cam_xy = Gg.V2.of_tuple xy in
     Printf.printf "Clicked at %s\n%!" (Gg.V2.to_string cam_xy);

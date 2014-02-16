@@ -7,11 +7,11 @@ let view ~packing cnc () =
   travel_length#entry#set_text "1.0";
   let cnc_x = ref 0.0  in
   let cnc_y = ref 0.0 in
-  let position_adjust_callback = ref (fun (_, _) -> ()) in
+  let position_adjust_callback = Hook.create () in
   let move_by x_ofs y_ofs =
     cnc_x := !cnc_x +. x_ofs;
     cnc_y := !cnc_y +. y_ofs;
-    !position_adjust_callback (x_ofs, y_ofs);
+    Hook.issue position_adjust_callback (x_ofs, y_ofs);
     assert (abs_float x_ofs < 5.0);
     assert (abs_float y_ofs < 5.0);
     Cnc.wait cnc (Cnc.set_feed_rate 100.0);
