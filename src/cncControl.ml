@@ -3,7 +3,7 @@ open Gtk
 let view ~packing cnc () =
   let vbox = GPack.vbox ~packing () in
   let directionals = GPack.table ~packing:(vbox#add) ~columns:3 ~rows:3 () in
-  let (travel_length, _) = GEdit.combo_box_entry_text ~strings:["0.01"; "0.1"; "1.0"; "10.0"; "50.0"] ~packing:vbox#pack () in
+  let (travel_length, _) = GEdit.combo_box_entry_text ~strings:["0.05"; "0.1"; "1.0"; "10.0"; "20.0"] ~packing:vbox#pack () in
   travel_length#entry#set_text "1.0";
   let cnc_x = ref 0.0  in
   let cnc_y = ref 0.0 in
