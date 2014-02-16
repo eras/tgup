@@ -58,34 +58,40 @@ let reader (fd, state) =
 	let strs = LineBuffer.append_substring lb buf 0 n in
 	let process_json handler str =
 	  let open Json in
-	  let json = from_string str in
-	  match Some json +> "r" with
-	  | None -> (* don't handle these at the moment *) handler
-	  | Some r ->
-	    let handler =
-	      match handler with
-	      | None -> get_next_handler ()
-	      | Some handler -> Some handler
-	    in
-	    ( match handler with
-	    | None -> None
-	    | Some (Cont f, _finish) -> 
-	      let (_handler, finish) = f (to_string r) in
-	      Protect.access state (
-		fun st ->
-		  st.received_ack <- st.received_ack + 1;
-	      );
-	      finish ();
-	      None
-	    )
-	in
+	  let json =
+	    try Some (from_string str)
+	    with _ -> None
+	  in
+	    match json +> "r" with
+	    | None ->
+	      (* don't handle these at the moment *) 
+	      Printf.fprintf stderr "Cnc.reader.loop.process_json: cannot parse %s\n%!" str;
+	      handler
+	    | Some r ->
+	      let handler =
+		match handler with
+		| None -> get_next_handler ()
+		| Some handler -> Some handler
+	      in
+	      ( match handler with
+	      | None -> None
+	      | Some (Cont f, _finish) -> 
+		let (_handler, finish) = f (to_string r) in
+		Protect.access state (
+		  fun st ->
+		    st.received_ack <- st.received_ack + 1;
+		);
+		finish ();
+		None
+	      )
+	  in
 	let handler =
 	  List.fold_left
 	    (fun (handler : (receive_handler * receive_finish) option) str ->
 	       Printf.printf "CNC<-%s\n%!" str;
 	       let handler : (receive_handler * receive_finish) option =
 		 match str with
-		 | str when Pcre.pmatch ~pat:"^{" str ->
+		 | str when Pcre.pmatch ~pat:"{" str ->
 		   process_json handler str
 		 | str when Pcre.pmatch ~pat:"ok" str ->
 		   (match handler with
