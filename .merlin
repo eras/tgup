@@ -1,6 +1,7 @@
 S OCamlGcode
 B _build
 B _build/OCamlGcode
+B _build/src
 B ocamlfind/v4l2
 FLG -w -40
 PKG batteries
