@@ -192,8 +192,6 @@ let gui sigint_triggered config camera_matrix_arg =
   let points = ref [] in
   let mark_cnc_location : Gg.V3.t option ref = ref None in
   let mark_camera_offset : Gg.V3.t option ref = ref None in
-  let _ = mark_location_widget ~label:"Mark" ~tooltip:"Mark the current position of drill" cnc (tap (save_location mark_cnc_location) @. location_label) ~packing:control_box#pack in
-  let _ = mark_location_widget ~label:"Camera\noffset" ~tooltip:"Measure distance between camera and drill mark" cnc (fun at -> let at = save_location_difference mark_camera_offset !mark_cnc_location at in Option.map_default location_label "" at) ~packing:control_box#pack in
   let (coord_mode_selection, _) = GEdit.combo_box_text ~strings:["CNC Mode"; "Camera mode"] ~active:(int_of_coord_mode !current_coord_mode) ~packing:control_box#pack () in
   let point_mapping = ref Gg.M3.id in
   let env = object
@@ -205,8 +203,8 @@ let gui sigint_triggered config camera_matrix_arg =
     method video	   = video
     method cnc_control	   = cnc_control
   end in
-  coord_mode_selection#connect#changed (fun () ->
-    match !current_coord_mode, coord_mode_of_int coord_mode_selection#active, !mark_camera_offset with 
+  let set_coord_mode coord_mode =
+    ( match !current_coord_mode, coord_mode, !mark_camera_offset with 
     | `CoordModeCNC, `CoordModeCamera, Some offset ->
       current_coord_mode := `CoordModeCamera;
       let offset' = Gg.V3.neg offset in
@@ -215,8 +213,25 @@ let gui sigint_triggered config camera_matrix_arg =
       current_coord_mode := `CoordModeCNC;
       env#cnc_control#adjust_position (Gg.V3.x offset) (Gg.V3.y offset)
     | _ -> 
-      coord_mode_selection#set_active (int_of_coord_mode !current_coord_mode)
-  );
+      () );
+    coord_mode_selection#set_active (int_of_coord_mode !current_coord_mode)
+  in
+  ignore (coord_mode_selection#connect#changed (fun () ->
+    set_coord_mode (coord_mode_of_int coord_mode_selection#active)
+  ));
+  let _ = mark_location_widget ~label:"Mark" ~tooltip:"Mark the current position of drill" cnc (tap (save_location mark_cnc_location) @. location_label) ~packing:control_box#pack in
+  let set_camera_offset at =
+    match save_location_difference mark_camera_offset !mark_cnc_location at with
+    | None -> ""
+    | Some ofs ->
+      ( match !current_coord_mode with
+      | `CoordModeCNC ->
+	current_coord_mode := `CoordModeCamera;
+	coord_mode_selection#set_active (int_of_coord_mode !current_coord_mode)
+      | _ -> () );
+      location_label ofs
+  in
+  let _ = mark_location_widget ~label:"Camera\noffset" ~tooltip:"Measure distance between camera and drill mark" cnc set_camera_offset ~packing:control_box#pack in
   ignore (Hook.hook liveview#overlay (draw_overlay env));
   ignore (Hook.hook cnc_control#position_adjust_callback (cnc_moved env));
   cnc_moved env cnc_control#get_position;
