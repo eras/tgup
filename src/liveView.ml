@@ -46,6 +46,55 @@ let cairo_matrix_of_m3 m =
     y0 = e12 m;
   }
 
+let bounds m (im_width, im_height) =
+  let open Gg in
+  let points =
+    List.map
+      (fun (x, y) ->
+	P2.tr m (V2.v x y)
+      )
+      [(~-.im_width /. 2.0, ~-.im_height /. 2.0); (im_width /. 2.0, ~-.im_height /. 2.0);
+       (~-.im_width /. 2.0, im_height /. 2.0); (im_width /. 2.0, im_height /. 2.0)]
+  in
+  let extreme choose op =
+    List.fold_left (
+      fun minima value ->
+	if op minima (choose value)
+	then minima
+	else (choose value)
+    ) 
+      (choose (List.hd points)) (List.tl points) 
+  in
+  let left   = extreme V2.x ( < ) in
+  let right  = extreme V2.x ( > ) in
+  let top    = extreme V2.y ( > ) in
+  let bottom = extreme V2.y ( < ) in
+  (left, right, top, bottom)
+
+let fit m (area_width, area_height) (im_width, im_height) =
+  let open Gg in
+  let ( *| ) = M3.mul in
+  let (left, right, top, bottom) = bounds m (im_width, im_height) in
+  let width' = right -. left in
+  let height' = top -. bottom in
+  let m = M3.move (V2.v (~-.left) top) *| m in
+  let x_scale, y_scale =
+    if area_width /. area_height > width' /. height' 
+    then (area_height /. height', area_height /. height')
+    else (area_width /. width', area_width /. width')
+  in
+  let m = M3.scale2 (V2.v (x_scale) (y_scale)) *| m in
+  m
+
+let center m (area_width, area_height) (im_width, im_height) =
+  let open Gg in
+  let ( *| ) = M3.mul in
+  let (left, right, top, bottom) = bounds m (im_width, im_height) in
+  let area_center = V2.v (area_width /. 2.0) (area_height /. 2.0) in
+  let matrix_center = V2.v ((left +. right) /. 2.0) ((top +. bottom) /. 2.0) in
+  let m = M3.move (V2.sub area_center matrix_center) *| m in
+  m
+
 let view (width, height) ?(angle=0.0) ?packing () =
   let drawing_area = GMisc.drawing_area ?packing ~width ~height () in
   let image = ref None in
@@ -67,23 +116,13 @@ let view (width, height) ?(angle=0.0) ?packing () =
       arc cr (0.65 *. area_width) (0.65 *. area_height) r 0. pi2;
       fill cr
     | Some (image, image_width, image_height) ->
-      let (im_width, im_height) = (float image_width, float image_height) in
-      let aspect = im_width /. im_height in
-      let x_scale, y_scale =
-	if area_width /. area_height > aspect 
-	then (area_height /. im_height, area_height /. im_height)
-	else (area_width /. im_width, area_width /. im_width)
-      in
-
       let open Gg in
-      let ( *| ) = M3.mul in
+      let (im_width, im_height) = (float image_width, float image_height) in
       let ( *|| ) a b = M3.mul b a in
       let m = M3.id in
-      let m = M3.move (V2.v (im_height /. 2.0) (im_width /. 2.0))	  *|| m in
-      let m = M3.rot (-. !angle)					  *|| m in
-      let m = M3.move (V2.v (~-. im_width /. 2.0) (~-. im_height /. 2.0)) *|| m in
-      let m = M3.scale2 (V2.v x_scale y_scale)				  *|| m in
-      let m = M3.move (V2.v (area_width /. 2.0) (area_height /. 2.0))	  *|| m in
+      let m = M3.rot (-. !angle) *|| m in
+      let m = fit m (area_width, area_height) (im_width, im_height) in
+      let m = center m (area_width, area_height) (im_width, im_height) in
 
       set_matrix cr (cairo_matrix_of_m3 m);
 
