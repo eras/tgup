@@ -56,6 +56,25 @@ let reader (fd, state) =
       if n > 0 
       then (
 	let strs = LineBuffer.append_substring lb buf 0 n in
+	let process_json handler str =
+	  let open Json in
+	  let json = from_string str in
+	  match Some json @-> "r" with
+	  | None -> (* don't handle these at the moment *) handler
+	  | Some r ->
+	    let handler =
+	      match handler with
+	      | None -> get_next_handler ()
+	      | Some handler -> Some handler
+	    in
+	    ( match handler with
+	    | None -> None
+	    | Some (Cont f, _finish) -> 
+	      let (_handler, finish) = f (to_string r) in
+	      finish ();
+	      None
+	    )
+	in
 	let handler =
 	  List.fold_left
 	    (fun (handler : (receive_handler * receive_finish) option) str ->
@@ -63,18 +82,7 @@ let reader (fd, state) =
 	       let handler : (receive_handler * receive_finish) option =
 		 match str with
 		 | str when Pcre.pmatch ~pat:"^{" str ->
-		   let handler =
-		     match handler with
-		     | None -> get_next_handler ()
-		     | Some handler -> Some handler
-		   in
-		   ( match handler with
-		   | None -> None
-		   | Some (Cont f, _finish) -> 
-		     let (_handler, finish) = f str in
-		     finish ();
-		     None
-		   )
+		   process_json handler str
 		 | str when Pcre.pmatch ~pat:"ok" str ->
 		   (match handler with
 		   | None -> BatOption.may (fun (_, finish) -> finish ()) (get_next_handler ())
