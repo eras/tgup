@@ -1,8 +1,6 @@
 open Batteries
 open Common
 
-module Json = Yojson.Safe
-
 let get_assoc json =
   match json with
   | `Assoc x -> x
