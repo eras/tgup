@@ -1,4 +1,5 @@
 open Batteries
+open Common
 
 type handled_token = int
 
@@ -61,32 +62,45 @@ let reader (fd, state) =
 	       Printf.printf "CNC<-%s\n%!" str;
 	       let handler : (receive_handler * receive_finish) option =
 		 match str with
-		   | str when Pcre.pmatch ~pat:"ok" str ->
-		       (match handler with
-			  | None -> BatOption.may (fun (_, finish) -> finish ()) (get_next_handler ())
-			  | Some (_, finish) -> finish ());
-			 Protect.access state (
-			   fun st ->
-			     st.received_ack <- st.received_ack + 1;
-			 );
-			 None
-		   | "start" ->
-		       Protect.access state (
-			 fun st -> 
-			   st.received_ack <- 1;
+		 | str when Pcre.pmatch ~pat:"^{" str ->
+		   let handler =
+		     match handler with
+		     | None -> get_next_handler ()
+		     | Some handler -> Some handler
+		   in
+		   ( match handler with
+		   | None -> None
+		   | Some (Cont f, _finish) -> 
+		     let (_handler, finish) = f str in
+		     finish ();
+		     None
+		   )
+		 | str when Pcre.pmatch ~pat:"ok" str ->
+		   (match handler with
+		   | None -> BatOption.may (fun (_, finish) -> finish ()) (get_next_handler ())
+		   | Some (_, finish) -> finish ());
+		   Protect.access state (
+		     fun st ->
+		       st.received_ack <- st.received_ack + 1;
+		   );
+		   None
+		 | "start" ->
+		   Protect.access state (
+		     fun st -> 
+		       st.received_ack <- 1;
 			   (* TODO: call some error handler for remaining messages *)
-			   st.line_callbacks <- BatDeque.empty;
-		       );
-		       None
-		   | str ->
-		       let handler =
-			 match handler with
-			   | None -> get_next_handler ()
-			   | Some handler -> Some handler
-		       in
-			 match handler with
-			   | None -> None
-			   | Some (Cont f, _finish) -> Some (f str)
+		       st.line_callbacks <- BatDeque.empty;
+		   );
+		   None
+		 | str ->
+		   let handler =
+		     match handler with
+		     | None -> get_next_handler ()
+		     | Some handler -> Some handler
+		   in
+		   match handler with
+		   | None -> None
+		   | Some (Cont f, _finish) -> Some (f str)
 	       in
 		 handler
 	    )
@@ -132,18 +146,35 @@ let name_of_axis = function
   | `Y -> "Y"
   | `Z -> "Z"
 
-let send msg (handle_response : ('a -> unit) -> unit -> receive_handler * receive_finish) : 'a request =
+let send_str mk_msg (handle_response : ('a -> unit) -> unit -> receive_handler * receive_finish) : 'a request =
   fun () ->
     (( fun t ->
-	 let msg = Printf.sprintf "N%d %s" t.line msg in
-	 (* let checksum = BatString.explode msg |> List.map Char.code |> List.fold_left (lxor) 0 in *)
-	 (* let msg = Printf.sprintf "%s*%d" msg checksum in *)
-	 let _ = Printf.printf "->CNC: %s\n%!" msg in
-	 let msg = msg ^ "\n" in
-	   ignore (Unix.write t.fd msg 0 (String.length msg));
-	   t.line <- t.line + 1 ),
+      let msg = mk_msg t.line in
+      let _ = Printf.printf "->CNC: %s\n%!" msg in
+      let msg = msg ^ "\n" in
+      ignore (Unix.write t.fd msg 0 (String.length msg));
+      t.line <- t.line + 1 ),
      handle_response
     )
+
+let not1 f x = not (f x)
+
+let send_json msg = send_str @@ fun line ->
+  let open Json in
+  let msg : json =
+    (* annotate "gc", if it exists, with a line number *)
+    let has_gc = function ("gc", `String _) -> true | _ -> false in
+    match msg with
+    | `Assoc xs when List.exists has_gc xs ->
+      let (_, gc) = (List.find has_gc xs) in
+      let gc = get_string gc in
+      let gc = Printf.sprintf "N%d %s" line gc in
+      `Assoc (("gc", `String gc)::List.filter (not1 has_gc) xs)
+    | _ -> msg
+  in
+  Json.to_string msg
+
+let send_gcode msg = send_json (`Assoc ["gc", `String msg])
 
 let unit_response (respond : unit -> unit) =
   let rec loop _str = (Cont loop, respond) in
@@ -160,9 +191,9 @@ let single_string_response (respond : string -> unit) =
     fun () -> (Cont loop, fun () -> respond "")
 
 let home axis =
-  send ("G28 " ^ String.concat " " (List.map (fun axis -> name_of_axis axis ^ "0") axis)) unit_response
+  send_gcode ("G28 " ^ String.concat " " (List.map (fun axis -> name_of_axis axis ^ "0") axis)) unit_response
 
-let set_step_speed speed = send ("G1 F" ^ string_of_float speed) unit_response
+let set_step_speed speed = send_gcode ("G1 F" ^ string_of_float speed) unit_response
 
 let string_of_axis axis =
   axis 
@@ -174,19 +205,19 @@ let string_of_axis axis =
   |> List.map (uncurry (Printf.sprintf "%s%.3f"))
   |> String.concat " "
 
-let travel axis = send ("G0 " ^ string_of_axis axis) unit_response
+let travel axis = send_gcode ("G0 " ^ string_of_axis axis) unit_response
 
-let feed axis = send ("G1 " ^ string_of_axis axis) unit_response
+let feed axis = send_gcode ("G1 " ^ string_of_axis axis) unit_response
       
-let set_position axis = send ("G92 " ^ string_of_axis axis) unit_response
+let set_position axis = send_gcode ("G92 " ^ string_of_axis axis) unit_response
 
-let set_absolute = send ("G90") unit_response
+let set_absolute = send_gcode ("G90") unit_response
 
-let set_feed_rate rate = send ("F" ^ string_of_float rate) unit_response
+let set_feed_rate rate = send_gcode ("F" ^ string_of_float rate) unit_response
 
-let set_relative = send ("G91") unit_response
+let set_relative = send_gcode ("G91") unit_response
 
-let set_acceleration axis = send ("M201 " ^ string_of_axis axis) unit_response
+let set_acceleration axis = send_gcode ("M201 " ^ string_of_axis axis) unit_response
 
 let wrap_response input output =
   fun respond ->
@@ -245,19 +276,19 @@ let where =
        List.assoc 'Y' regs,
        List.assoc 'Z' regs)
   in
-    send "M114" (wrap_response single_string_response process)
+    send_gcode "M114" (wrap_response single_string_response process)
 
 let motors_off =
-  send "M84" unit_response
+  send_gcode "M84" unit_response
 
 let synchronize =
-  send "M400" unit_response
+  send_gcode "M400" unit_response
 
 let set_power state =
-  send (if state then "M80" else "M81") unit_response
+  send_gcode (if state then "M80" else "M81") unit_response
 
 let set_port port value =
-  send (Printf.sprintf "M42 P%d S%d" port value) unit_response
+  send_gcode (Printf.sprintf "M42 P%d S%d" port value) unit_response
 
 let async t (request : 'a request) (callback : 'a -> unit) =
   let (issue, handler) = request () in
