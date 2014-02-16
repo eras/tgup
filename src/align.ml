@@ -135,12 +135,13 @@ let make_mark cnc ~packing () =
   in
   ignore (mark_button#connect#clicked ~callback:set_mark)
 
-let gui config camera_matrix_arg =
+let gui sigint_triggered config camera_matrix_arg =
   let video = V4l2.init "/dev/video0" { width = 640; height = 480 } in
 
   let main_window = GWindow.window ~border_width:10 () in
   Gobject.set GtkBaseProps.Window.P.allow_shrink main_window#as_window true;
   ignore (main_window#connect#destroy ~callback:destroy);
+  ignore (sigint_triggered#add_persistent_callback (fun () -> destroy ()));
   let vbox = GPack.vbox ~packing:main_window#add () in
   let quit_button = GButton.button ~label:"Quit" ~packing:(vbox#pack ~expand:false) () in
   let _ = GMisc.separator `HORIZONTAL ~packing:(vbox#pack ~fill:true ~padding:5) () in
@@ -177,5 +178,4 @@ let gui config camera_matrix_arg =
   main_window#show ();
   GMain.Main.main ()
 
-let align sigint_triggered config = 
-  gui config
+let align = gui
