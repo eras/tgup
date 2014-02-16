@@ -32,6 +32,12 @@ let get_int json =
   | `Int l -> l
   | _ -> raise Not_found
 
+let get_float json =
+  match json with
+  | `Float l -> l
+  | `Int l -> float_of_int l
+  | _ -> raise Not_found
+
 let get_linenumber (`Result result) = 
   try Some (get_int (List.assoc "n" result))
   with Not_found -> None
