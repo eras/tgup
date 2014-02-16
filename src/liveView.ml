@@ -34,7 +34,17 @@ let image_of_rgb (width, height) rgb_data =
   done;
   image
 
-let dup_matrix (m : Cairo.matrix) = { m with Cairo.xx = m.Cairo.xx }
+let cairo_matrix_of_m3 m = 
+  let open Cairo in
+  let open Gg.M3 in
+  {
+    xx = e00 m;
+    xy = e01 m;
+    x0 = e02 m;
+    yx = e10 m;
+    yy = e11 m;
+    y0 = e12 m;
+  }
 
 let view (width, height) ?(angle=0.0) ?packing () =
   let drawing_area = GMisc.drawing_area ?packing ~width ~height () in
@@ -64,27 +74,28 @@ let view (width, height) ?(angle=0.0) ?packing () =
 	then (area_height /. im_height, area_height /. im_height)
 	else (area_width /. im_width, area_width /. im_width)
       in
-      let matrix = Matrix.init_identity () in
-      Matrix.translate matrix ~y:(im_width /. 2.0) ~x:(im_height /. 2.0);
-      Matrix.rotate matrix (-. !angle);
-      Matrix.translate matrix ~x:(~-. im_width /. 2.0) ~y:(~-. im_height /. 2.0);
-      Matrix.scale matrix x_scale y_scale;
-      Matrix.translate matrix ~x:(area_width /. 2.0) ~y:(area_height /. 2.0);
 
-      set_matrix cr matrix;
+      let open Gg in
+      let ( *| ) = M3.mul in
+      let ( *|| ) a b = M3.mul b a in
+      let m = M3.id in
+      let m = M3.move (V2.v (im_height /. 2.0) (im_width /. 2.0))	  *|| m in
+      let m = M3.rot (-. !angle)					  *|| m in
+      let m = M3.move (V2.v (~-. im_width /. 2.0) (~-. im_height /. 2.0)) *|| m in
+      let m = M3.scale2 (V2.v x_scale y_scale)				  *|| m in
+      let m = M3.move (V2.v (area_width /. 2.0) (area_height /. 2.0))	  *|| m in
+
+      set_matrix cr (cairo_matrix_of_m3 m);
 
       set_source_surface cr image ~x:(~-.im_width /. 2.0) ~y:(~-.im_height /. 2.0);
       rectangle cr (~-.im_width /. 2.0) (im_height /. 2.0) (im_width -. 1.0) (~-.im_height -. 1.0);
       fill cr;
 
-      Matrix.scale matrix 1.0 ~-.1.0;
+      let m_overlay = M3.scale2 (V2.v 1.0 ~-.1.0) *|| m in
 
-      ( let tmp = dup_matrix matrix in
-	(* Matrix.scale tmp 1.0 ~-.1.0; *)
-	Matrix.invert tmp;
-	inverse_transformation_matrix := Some tmp);
+      inverse_transformation_matrix := Some (Gg.M3.inv m_overlay);
 
-      set_matrix cr matrix;
+      set_matrix cr (cairo_matrix_of_m3 m_overlay);
       Hook.issue overlay cr
   in
   let expose ev =
@@ -111,7 +122,7 @@ let view (width, height) ?(angle=0.0) ?packing () =
     | None -> ()
     | Some matrix ->
       let (x, y) = (GdkEvent.Button.x ev, GdkEvent.Button.y ev) in
-      let (x', y') = Cairo.Matrix.transform_point matrix ~x ~y in
+      let (x', y') = Gg.V2.to_tuple (Gg.P2.tr matrix (Gg.V2.v x y)) in
       Printf.printf "Pressed at %f, %f\n%!" x' y';
       ignore (Hook.issue on_button_press (x', y'));
       ()
@@ -123,7 +134,7 @@ let view (width, height) ?(angle=0.0) ?packing () =
     | None -> ()
     | Some matrix ->
       let (x, y) = (GdkEvent.Motion.x ev, GdkEvent.Motion.y ev) in
-      let (x', y') = Cairo.Matrix.transform_point matrix ~x ~y in
+      let (x', y') = Gg.V2.to_tuple (Gg.P2.tr matrix (Gg.V2.v x y)) in
       ignore (Hook.issue on_mouse_move (x', y'));
       ()
     );
