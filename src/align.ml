@@ -179,11 +179,22 @@ let gui sigint_triggered config camera_matrix_arg =
   let control_box = GPack.vbox ~packing:(hbox#pack ~expand:false ~padding:5) () in
   let cnc_control = CncControl.view ~packing:(control_box#pack) cnc () in
   let info = GMisc.label ~packing:control_box#pack () in
+  let int_of_coord_mode = function
+  | `CoordModeCNC -> 0
+  | `CoordModeCamera -> 1
+  in
+  let coord_mode_of_int = function
+  | 0 -> `CoordModeCNC
+  | 1 -> `CoordModeCamera
+  | _ -> assert false
+  in
+  let current_coord_mode = ref `CoordModeCNC in
   let points = ref [] in
   let mark_cnc_location : Gg.V3.t option ref = ref None in
   let mark_camera_offset : Gg.V3.t option ref = ref None in
   let _ = mark_location_widget ~label:"Mark" ~tooltip:"Mark the current position of drill" cnc (tap (save_location mark_cnc_location) @. location_label) ~packing:control_box#pack in
   let _ = mark_location_widget ~label:"Camera\noffset" ~tooltip:"Measure distance between camera and drill mark" cnc (fun at -> let at = save_location_difference mark_camera_offset !mark_cnc_location at in Option.map_default location_label "" at) ~packing:control_box#pack in
+  let (coord_mode_selection, _) = GEdit.combo_box_text ~strings:["CNC Mode"; "Camera mode"] ~active:(int_of_coord_mode !current_coord_mode) ~packing:control_box#pack () in
   let point_mapping = ref Gg.M3.id in
   let env = object
     method points	   = points
@@ -194,6 +205,18 @@ let gui sigint_triggered config camera_matrix_arg =
     method video	   = video
     method cnc_control	   = cnc_control
   end in
+  coord_mode_selection#connect#changed (fun () ->
+    match !current_coord_mode, coord_mode_of_int coord_mode_selection#active, !mark_camera_offset with 
+    | `CoordModeCNC, `CoordModeCamera, Some offset ->
+      current_coord_mode := `CoordModeCamera;
+      let offset' = Gg.V3.neg offset in
+      env#cnc_control#adjust_position (Gg.V3.x offset') (Gg.V3.y offset')
+    | `CoordModeCamera, `CoordModeCNC, Some offset ->
+      current_coord_mode := `CoordModeCNC;
+      env#cnc_control#adjust_position (Gg.V3.x offset) (Gg.V3.y offset)
+    | _ -> 
+      coord_mode_selection#set_active (int_of_coord_mode !current_coord_mode)
+  );
   ignore (Hook.hook liveview#overlay (draw_overlay env));
   ignore (Hook.hook cnc_control#position_adjust_callback (cnc_moved env));
   cnc_moved env cnc_control#get_position;
