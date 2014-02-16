@@ -44,8 +44,7 @@ let add_calibration_point env (cam_xy, cnc_xy) =
   | _ -> ()
   )
 
-let show_location env xy =
-  let cam_xy = Gg.V2.of_tuple xy in
+let show_location env cam_xy =
   match !(env#camera_to_world) with
   | None -> ()
   | Some camera_to_world ->
@@ -156,8 +155,7 @@ let gui config camera_matrix_arg =
   end in
   ignore (Hook.hook liveview#overlay (draw_overlay env));
   ignore (Hook.hook cnc_control#position_adjust_callback (cnc_moved env));
-  ignore (Hook.hook liveview#on_button_press (fun xy ->
-    let cam_xy = Gg.V2.of_tuple xy in
+  ignore (Hook.hook liveview#on_button_press (fun cam_xy ->
     Printf.printf "Clicked at %s\n%!" (Gg.V2.to_string cam_xy);
     match !camera_to_world with
     | None -> add_calibration_point env (cam_xy, Gg.V2.of_tuple cnc_control#get_position);

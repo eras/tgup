@@ -122,9 +122,9 @@ let view (width, height) ?(angle=0.0) ?packing () =
     | None -> ()
     | Some matrix ->
       let (x, y) = (GdkEvent.Button.x ev, GdkEvent.Button.y ev) in
-      let (x', y') = Gg.V2.to_tuple (Gg.P2.tr matrix (Gg.V2.v x y)) in
-      Printf.printf "Pressed at %f, %f\n%!" x' y';
-      ignore (Hook.issue on_button_press (x', y'));
+      let xy = Gg.P2.tr matrix (Gg.V2.v x y) in
+      Printf.printf "Pressed at %s\n%!" (Gg.V2.to_string xy);
+      ignore (Hook.issue on_button_press xy);
       ()
     );
     true
@@ -134,8 +134,8 @@ let view (width, height) ?(angle=0.0) ?packing () =
     | None -> ()
     | Some matrix ->
       let (x, y) = (GdkEvent.Motion.x ev, GdkEvent.Motion.y ev) in
-      let (x', y') = Gg.V2.to_tuple (Gg.P2.tr matrix (Gg.V2.v x y)) in
-      ignore (Hook.issue on_mouse_move (x', y'));
+      let xy = Gg.P2.tr matrix (Gg.V2.v x y) in
+      ignore (Hook.issue on_mouse_move xy);
       ()
     );
     true
