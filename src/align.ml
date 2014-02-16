@@ -125,6 +125,16 @@ let move_cnc env cam_xy camera_to_world =
   let move = P2.tr camera_to_world cam_xy in
   env#cnc_control#adjust_position (V2.x move) (V2.y move)
 
+let make_mark cnc ~packing () =
+  let mark_box = GPack.hbox ~packing () in
+  let mark_button = GButton.button ~label:"Mark" ~packing:mark_box#pack () in
+  let mark_label = GMisc.label ~packing:mark_box#pack ~text:"Unset" () in
+  let set_mark event =
+    let status = Cnc.wait cnc Cnc.status_tinyg in
+    mark_label#set_label (Printf.sprintf "X:%.3f Y:%.3f Z:%.3f" status.x status.y status.z)
+  in
+  ignore (mark_button#connect#clicked ~callback:set_mark)
+
 let gui config camera_matrix_arg =
   let video = V4l2.init "/dev/video0" { width = 640; height = 480 } in
 
@@ -141,7 +151,8 @@ let gui config camera_matrix_arg =
   let cnc = Cnc.connect config.Common.co_device config.Common.co_bps in
   let control_box = GPack.vbox ~packing:(hbox#pack ~expand:false ~padding:5) () in
   let cnc_control = CncControl.view ~packing:(control_box#pack) cnc () in
-  let info = GMisc.label ~packing:(control_box#pack) () in
+  let info = GMisc.label ~packing:control_box#pack () in
+  let _ = make_mark cnc ~packing:control_box#pack () in
   let points = ref [] in
   let point_mapping = ref Gg.M3.id in
   let env = object
