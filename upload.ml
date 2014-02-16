@@ -1,42 +1,6 @@
 open Batteries
 open Common
 
-let get_assoc json =
-  match json with
-  | `Assoc x -> x
-  | _ -> raise Not_found
-
-let get_list json =
-  match json with
-  | `List l -> l
-  | _ -> raise Not_found
-
-let get_string json =
-  match json with
-  | `String l -> l
-  | _ -> raise Not_found
-
-let get_int json =
-  match json with
-  | `Int l -> l
-  | _ -> raise Not_found
-
-let get_linenumber (`Result result) = 
-  try Some (get_int (List.assoc "n" result))
-  with Not_found -> None
-
-let get_tinyg str =
-  try 
-    ( let a = get_assoc (Json.from_string str) in
-      try `Result (get_assoc (List.assoc "r" a))
-      with Not_found -> 
-	try `Status (get_assoc (List.assoc "sr" a))
-	with Not_found ->
-	  try `Queue_report (get_int (List.assoc "qr" a))
-	  with Not_found -> `Other a )
-  with Yojson.Json_error _ ->
-    `Parse_error
-
 type result = (string * Json.json) list
 
 type linenumber = int
@@ -143,9 +107,9 @@ let receiver (ts : (_) tinyg_session) =
 	      let was_first_line = !first_line in
 	      first_line := false;
               if verbose then Printf.printf "<-%s\n%!" str;
-              match get_tinyg str with
+              match Json.get_tinyg str with
               | `Result result as full_result ->
-		( match get_linenumber full_result with
+		( match Json.get_linenumber full_result with
 		| Some linenumber ->
 		  let callback = Hashtbl.find rt.rt_line_callbacks linenumber in
 		  Hashtbl.remove rt.rt_line_callbacks linenumber;
@@ -155,7 +119,7 @@ let receiver (ts : (_) tinyg_session) =
 		)
               | `Status status ->
 		let current_linenumber =
-		  try Some (get_int (List.assoc "line" status))
+		  try Some (Json.get_int (List.assoc "line" status))
 		  with Not_found -> None in
 		( match current_linenumber with
 		| None -> ()
