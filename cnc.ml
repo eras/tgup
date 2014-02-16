@@ -202,6 +202,11 @@ let single_string_response (respond : string -> unit) =
     (Cont loop, fun () -> respond str) in
     fun () -> (Cont loop, fun () -> respond "")
 
+let json_response (respond : Json.json option -> unit) =
+  let rec loop str = 
+    (Cont loop, fun () -> respond (Some (Json.from_string str))) in
+    fun () -> (Cont loop, fun () -> respond None)
+
 let home axis =
   send_gcode ("G28 " ^ String.concat " " (List.map (fun axis -> name_of_axis axis ^ "0") axis)) unit_response
 
@@ -234,6 +239,43 @@ let set_acceleration axis = send_gcode ("M201 " ^ string_of_axis axis) unit_resp
 let wrap_response input output =
   fun respond ->
     input (fun msg -> respond (output msg))
+
+type tinyg_where = {
+  x    : float;
+  y    : float;
+  z    : float;
+  feed : float;
+  vel  : float;
+  coor : int;
+  dist : int;
+  momo : int;
+}
+
+let where_tinyg =
+  let process json =
+    let open Json in
+    let sr   = json +> "sr" in
+    let x    = sr +> "posx" in
+    let y    = sr +> "posy" in
+    let z    = sr +> "posz" in
+    let feed = sr +> "feed" in
+    let vel  = sr +> "vel" in
+    let coor = sr +> "coor" in
+    let dist = sr +> "dist" in
+    let momo = sr +> "momo" in
+    let f = function
+      | None -> assert false
+      | Some x -> get_float x
+    in
+    let i = function
+      | None -> assert false
+      | Some x -> get_int x
+    in
+    if List.mem None [x; y; z; feed; vel; coor; dist; momo]
+    then failwith ("Failed to retrieve TinYG location from " ^ to_string (Option.get json))
+    else { x = f x; y = f y; z = f z; feed = f feed; vel = f vel; coor = i coor; dist = i dist; momo = i momo }
+  in
+  send_json (`Assoc [("sr", `String "")]) (wrap_response json_response process)
 
 let where =
   let process str =
