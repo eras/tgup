@@ -158,8 +158,9 @@ let process_json reader_env handler str =
     process_sr reader_env (Some sr);
     handler
   | `R r ->
-    if !(reader_env.status_tinyg) = None then
-      process_initial_sr reader_env (Some r +> "sr");
+    let sr = lazy (Some r +> "sr") in
+    if !(reader_env.status_tinyg) = None && Lazy.force sr <> None then
+      process_initial_sr reader_env (Lazy.force sr);
     process_r reader_env handler r
 
 let reader (fd, receiver_state) =
