@@ -125,20 +125,37 @@ let move_cnc env cam_xy camera_to_world =
   let move = P2.tr camera_to_world cam_xy in
   env#cnc_control#adjust_position (V2.x move) (V2.y move)
 
-let make_mark cnc points ~packing () =
+let save_location var at = 
+  var := Some at
+
+let save_location_difference var at0 at1 = 
+  match at0 with
+  | None -> None
+  | Some at0 ->
+    let d = Gg.V3.sub at0 at1 in
+    var := Some d;
+    Some d
+
+let location_label at =
+  let open Gg.V3 in
+  Printf.sprintf "X:%.3f Y:%.3f Z:%.3f" (x at) (y at) (z at)
+
+let mark_location_widget ~label ~packing cnc f =
   let mark_box = GPack.hbox ~packing () in
-  let mark_button = GButton.button ~label:"Mark" ~packing:mark_box#pack () in
-  let mark_label = GMisc.label ~packing:mark_box#pack ~text:"Unset" () in
+  let mark_button = GButton.button ~label ~packing:mark_box#pack () in
+  let mark_label = GMisc.label ~packing:mark_box#pack () in
+  mark_label#set_label "Unset";
   let set_mark event =
     let status = Cnc.wait cnc Cnc.status_tinyg in
-    points := !points;
-    mark_label#set_label (Printf.sprintf "X:%.3f Y:%.3f Z:%.3f" status.x status.y status.z)
+    mark_label#set_label (f (Gg.V3.v status.x status.y status.z));
   in
   ignore (mark_button#connect#clicked ~callback:set_mark)
 
 let get_cnc_position cnc =
   let status = Cnc.wait cnc Cnc.status_tinyg in
   Gg.V2.v status.x status.y
+
+let (@.) f g x = g (f x)
 
 let gui sigint_triggered config camera_matrix_arg =
   let video = V4l2.init "/dev/video0" { width = 640; height = 480 } in
@@ -159,7 +176,10 @@ let gui sigint_triggered config camera_matrix_arg =
   let cnc_control = CncControl.view ~packing:(control_box#pack) cnc () in
   let info = GMisc.label ~packing:control_box#pack () in
   let points = ref [] in
-  let _ = make_mark cnc points ~packing:control_box#pack () in
+  let mark_cnc_location : Gg.V3.t option ref = ref None in
+  let mark_camera_offset : Gg.V3.t option ref = ref None in
+  let _ = mark_location_widget ~label:"Mark" cnc (tap (save_location mark_cnc_location) @. location_label) ~packing:control_box#pack in
+  let _ = mark_location_widget ~label:"Camera\noffset" cnc (fun at -> let at = save_location_difference mark_camera_offset !mark_cnc_location at in Option.map_default location_label "" at) ~packing:control_box#pack in
   let point_mapping = ref Gg.M3.id in
   let env = object
     method points	   = points
