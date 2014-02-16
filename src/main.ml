@@ -74,6 +74,14 @@ let affine_matrix_of_list_parser xs =
 let list_of_matrix m3 =
   Gg.M3.([e00 m3; e01 m3; e02 m3; e10 m3; e11 m3; e12 m3])
 
+let v2_of_list_parser xs =
+  match xs with
+  | x::y::[] -> `Ok (Gg.V2.v x y)
+  | _ -> `Error "Invalid number of elements (needs 2)"
+
+let list_of_v2 v2 =
+  Gg.V2.(List.map (fun f -> f v2) [x; y])
+
 let start_from_line =
   let doc = "Start transmitting beginning from this line (first line is 1)" in
   Arg.(value & opt (positive int) 1 & info ["#"; "first-line"] ~doc)
@@ -81,6 +89,10 @@ let start_from_line =
 let camera_matrix =
   let doc = "Define camera matrix" in
   Arg.(value & opt (some @@ map affine_matrix_of_list_parser list_of_matrix @@ list float) None & info ["camera-matrix"] ~doc)
+
+let camera_offset =
+  let doc = "Define cnc-camera offset" in
+  Arg.(value & opt (some @@ map v2_of_list_parser list_of_v2 @@ list float) None & info ["camera-offset"] ~doc)
 
 let default_prompt = 
   let doc = "A standalone G-code uploader for TinyG" in 
@@ -93,7 +105,7 @@ let cmd_upload sigint_triggered =
   Term.info "upload" ~version
 
 let cmd_align sigint_triggered = 
-  Term.(pure (Align.align sigint_triggered) $ common_opts_t $ camera_matrix),
+  Term.(pure (Align.align sigint_triggered) $ common_opts_t $ camera_matrix $ camera_offset),
   Term.info "align" ~version
 
 let sigint_triggered = new Future.t
