@@ -4,6 +4,7 @@ let view ~packing cnc () =
   let vbox = GPack.vbox ~packing () in
   let directionals = GPack.table ~packing:(vbox#add) ~columns:3 ~rows:3 () in
   let (travel_length, _) = GEdit.combo_box_entry_text ~strings:["0.05"; "0.1"; "1.0"; "10.0"; "20.0"] ~packing:vbox#pack () in
+  let info = GMisc.label ~packing:(vbox#pack) () in
   travel_length#entry#set_text "1.0";
   let cnc_x = ref 0.0  in
   let cnc_y = ref 0.0 in
@@ -28,6 +29,9 @@ let view ~packing cnc () =
   ignore ((GButton.button ~label:"Y-" ~packing:(directionals#attach ~left:1 ~top:2) ())#connect#clicked (move (0) (-1)));
   ignore ((GButton.button ~label:"X+" ~packing:(directionals#attach ~left:2 ~top:1) ())#connect#clicked (move (1) (0)));
   ignore ((GButton.button ~label:"X-" ~packing:(directionals#attach ~left:0 ~top:1) ())#connect#clicked (move (-1) (0)));
+  ignore (Hook.hook (Cnc.status_report_tinyg cnc) @@ fun report ->
+    info#set_label (Printf.sprintf "CNC: %.3f, %.3f" report.x report.y)
+  );
   object 
     method get_position = (!cnc_x, !cnc_y)
     method adjust_position x_ofs y_ofs = move_by x_ofs y_ofs
