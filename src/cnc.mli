@@ -1,6 +1,6 @@
 type 'a request
 
-type tinyg_where = {
+type status_tinyg = {
   x    : float;				(* x *)
   y    : float;				(* y *)
   z    : float;				(* z *)
@@ -51,11 +51,16 @@ val set_acceleration : [< `X of float | `Y of float | `Z of float ] list -> unit
 val set_step_speed : float -> unit request
 val set_feed_rate : float -> unit request
 
+(** Allows one to be informed when status is updated on TinyG. Note:
+    this call is currently synchronous (for determining the initial
+    position). *)
+val status_report_tinyg : t -> status_tinyg Hook.t
+
 (** Marlin: [where] requests the position *)
 val where : (float * float * float) request
 
-(** TinyG: [where_tinyg] requests the status information from TinyG (along with the position) *)
-val where_tinyg : tinyg_where request
+(** TinyG: [status_tinyg] requests the status information from TinyG (along with the position) *)
+val status_tinyg : status_tinyg request
 
 (** Marlin: [motors_off] sends M84 to turn off the power to the motors immediately *)
 val motors_off : unit request

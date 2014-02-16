@@ -11,11 +11,6 @@ type handled_token = int
 type receive_handler = Cont of (string -> (receive_handler * receive_finish))
 and receive_finish = unit -> unit
 
-type receiver_state = {
-  mutable received_ack		: int;
-  mutable line_callbacks	: (unit -> (receive_handler * receive_finish)) BatDeque.t;
-}
-
 let register_of_char = function
   | 'X' -> `X
   | 'Y' -> `Y
@@ -24,10 +19,28 @@ let register_of_char = function
   | 'F' -> `F
   | x -> failwith ("register_of_char: unknown register " ^ String.make 1 x)
 
+type status_tinyg = {
+  x    : float;
+  y    : float;
+  z    : float;
+  feed : float;
+  vel  : float;
+  coor : int;
+  dist : int;
+  momo : int;
+}
+
+type receiver_state = {
+  mutable received_ack	 : int;
+  mutable line_callbacks : (unit -> (receive_handler * receive_finish)) BatDeque.t;
+  status_report_tinyg	 : status_tinyg Hook.t;
+}
+
 type t = { 
-  fd		: Unix.file_descr;
-  mutable line	: int;
-  receiver	: receiver_state Protect.t;
+  fd			      : Unix.file_descr;
+  mutable line		      : int;
+  receiver		      : receiver_state Protect.t;
+  status_report_tinyg	      : status_tinyg Hook.t;
 }
 
 type 'a request = unit -> ((t -> unit) * (('a -> unit) -> unit -> (receive_handler * receive_finish)))
@@ -35,12 +48,126 @@ type 'a request = unit -> ((t -> unit) * (('a -> unit) -> unit -> (receive_handl
 let rec ignore_loop : receive_handler =
   Cont (fun _str -> (ignore_loop, fun () -> Printf.printf "Ignoring finish after loop\n%!"))
 
-let reader (fd, state) =
+type reader_env = {
+  get_next_handler	      : (unit -> (receive_handler * receive_finish) option);
+  status_tinyg		      : status_tinyg option ref;
+  receiver_state	      : receiver_state Protect.t;
+}
+
+module ParseStatusTinyG = struct
+  let get sr =
+    let open Json in
+    let x    = sr +> "posx" in
+    let y    = sr +> "posy" in
+    let z    = sr +> "posz" in
+    let feed = sr +> "feed" in
+    let vel  = sr +> "vel" in
+    let coor = sr +> "coor" in
+    let dist = sr +> "dist" in
+    let momo = sr +> "momo" in
+    (x, y, z, feed, vel, coor, dist, momo)
+end
+
+let parse_status_tinyg sr =
+  let open Json in
+  let open ParseStatusTinyG in
+  let (x, y, z, feed, vel, coor, dist, momo) = get sr in
+  let f = function
+    | None -> assert false
+    | Some x -> get_float x
+  in
+  let i = function
+    | None -> assert false
+    | Some x -> get_int x
+  in
+  if List.mem None [x; y; z; feed; vel; coor; dist; momo]
+  then failwith ("Failed to retrieve TinYG location from " ^ to_string (Option.get sr))
+  else { x = f x; y = f y; z = f z; feed = f feed; vel = f vel; coor = i coor; dist = i dist; momo = i momo }
+
+let updated_status_tinyg status sr =
+  let open Json in
+  let open ParseStatusTinyG in
+  let (x, y, z, feed, vel, coor, dist, momo) = get sr in
+  let f default = function
+    | None -> default
+    | Some x -> get_float x
+  in
+  let i default = function
+    | None -> default
+    | Some x -> get_int x
+  in
+  { x	 = f status.x x;
+    y	 = f status.y y;
+    z	 = f status.z z;
+    feed = f status.feed feed;
+    vel	 = f status.vel vel;
+    coor = i status.coor coor;
+    dist = i status.dist dist;
+    momo = i status.momo momo }  
+
+let process_sr reader_env sr =
+  match !(reader_env.status_tinyg) with
+  | None -> ()
+  | Some status -> 
+    let updated_status = updated_status_tinyg status sr in
+    reader_env.status_tinyg := Some updated_status;
+    Hook.issue (Protect.access reader_env.receiver_state (fun state -> state.status_report_tinyg)) updated_status
+    
+let process_initial_sr reader_env sr =
+  let status = parse_status_tinyg sr in
+  reader_env.status_tinyg := Some status;
+  Hook.issue (Protect.access reader_env.receiver_state (fun state -> state.status_report_tinyg)) status  
+
+let process_r reader_env handler r =
+  let handler =
+    match handler with
+    | None -> reader_env.get_next_handler ()
+    | Some handler -> Some handler
+  in
+  ( match handler with
+  | None -> None
+  | Some (Cont f, _finish) -> 
+    let open Json in
+    let (_handler, finish) = f (to_string r) in
+    Protect.access reader_env.receiver_state (
+      fun st ->
+	st.received_ack <- st.received_ack + 1;
+    );
+    finish ();
+    None
+  )
+
+let process_json reader_env handler str =
+  let open Json in
+  let json =
+    try Some (from_string str)
+    with _ -> None
+  in
+  let response_kind = 
+    match json +> "r", json +> "sr" with
+    | Some r, _	 -> `R r
+    | _, Some sr -> `SR sr
+    | _		 -> `None
+  in
+  match response_kind with
+  | `None ->
+    (* don't handle these at the moment *) 
+    Printf.fprintf stderr "Cnc.reader.loop.process_json: cannot parse %s\n%!" str;
+    handler
+  | `SR sr ->
+    process_sr reader_env (Some sr);
+    handler
+  | `R r ->
+    if !(reader_env.status_tinyg) = None then
+      process_initial_sr reader_env (Some r +> "sr");
+    process_r reader_env handler r
+
+let reader (fd, receiver_state) =
   let buf = String.create 1024 in
   let lb = LineBuffer.create () in
   let rec get_next_handler () : (receive_handler * receive_finish) option =
     let handler =
-      Protect.access state (
+      Protect.access receiver_state (
 	fun st ->
 	  match BatDeque.front st.line_callbacks with
 	    | None -> (fun () -> None)
@@ -51,40 +178,16 @@ let reader (fd, state) =
     in
       handler
   in
+  let reader_env = {
+    receiver_state   = receiver_state;
+    get_next_handler = get_next_handler;
+    status_tinyg     = ref None;
+  } in
   let rec loop (handler : (receive_handler * receive_finish) option) =
     let n = Unix.read fd buf 0 (String.length buf) in
       if n > 0 
       then (
 	let strs = LineBuffer.append_substring lb buf 0 n in
-	let process_json handler str =
-	  let open Json in
-	  let json =
-	    try Some (from_string str)
-	    with _ -> None
-	  in
-	    match json +> "r" with
-	    | None ->
-	      (* don't handle these at the moment *) 
-	      Printf.fprintf stderr "Cnc.reader.loop.process_json: cannot parse %s\n%!" str;
-	      handler
-	    | Some r ->
-	      let handler =
-		match handler with
-		| None -> get_next_handler ()
-		| Some handler -> Some handler
-	      in
-	      ( match handler with
-	      | None -> None
-	      | Some (Cont f, _finish) -> 
-		let (_handler, finish) = f (to_string r) in
-		Protect.access state (
-		  fun st ->
-		    st.received_ack <- st.received_ack + 1;
-		);
-		finish ();
-		None
-	      )
-	  in
 	let handler =
 	  List.fold_left
 	    (fun (handler : (receive_handler * receive_finish) option) str ->
@@ -92,18 +195,18 @@ let reader (fd, state) =
 	       let handler : (receive_handler * receive_finish) option =
 		 match str with
 		 | str when Pcre.pmatch ~pat:"{" str ->
-		   process_json handler str
+		   process_json reader_env handler str
 		 | str when Pcre.pmatch ~pat:"ok" str ->
 		   (match handler with
 		   | None -> BatOption.may (fun (_, finish) -> finish ()) (get_next_handler ())
 		   | Some (_, finish) -> finish ());
-		   Protect.access state (
+		   Protect.access receiver_state (
 		     fun st ->
 		       st.received_ack <- st.received_ack + 1;
 		   );
 		   None
 		 | "start" ->
-		   Protect.access state (
+		   Protect.access receiver_state (
 		     fun st -> 
 		       st.received_ack <- 1;
 			   (* TODO: call some error handler for remaining messages *)
@@ -150,14 +253,18 @@ let connect device bps =
       c_vmin		= 1;
   } in
   let _ = Unix.tcsetattr fd Unix.TCSANOW tio in
+  let status_report_tinyg = Hook.create () in
   let receiver =
     Protect.create (Mutex.create ())
       { received_ack    = 1;
-	line_callbacks	= BatDeque.empty }
+	line_callbacks	= BatDeque.empty;
+	status_report_tinyg }
   in
   let _ = Thread.create reader (fd, receiver) in
-    { fd; line = 1; 
-      receiver; }
+    { fd;
+      line = 1;
+      receiver;
+      status_report_tinyg; }
 
 let name_of_axis = function
   | `X -> "X"
@@ -246,40 +353,10 @@ let wrap_response input output =
   fun respond ->
     input (fun msg -> respond (output msg))
 
-type tinyg_where = {
-  x    : float;
-  y    : float;
-  z    : float;
-  feed : float;
-  vel  : float;
-  coor : int;
-  dist : int;
-  momo : int;
-}
-
-let where_tinyg =
-  let process json =
-    let open Json in
-    let sr   = json +> "sr" in
-    let x    = sr +> "posx" in
-    let y    = sr +> "posy" in
-    let z    = sr +> "posz" in
-    let feed = sr +> "feed" in
-    let vel  = sr +> "vel" in
-    let coor = sr +> "coor" in
-    let dist = sr +> "dist" in
-    let momo = sr +> "momo" in
-    let f = function
-      | None -> assert false
-      | Some x -> get_float x
-    in
-    let i = function
-      | None -> assert false
-      | Some x -> get_int x
-    in
-    if List.mem None [x; y; z; feed; vel; coor; dist; momo]
-    then failwith ("Failed to retrieve TinYG location from " ^ to_string (Option.get json))
-    else { x = f x; y = f y; z = f z; feed = f feed; vel = f vel; coor = i coor; dist = i dist; momo = i momo }
+let status_tinyg =
+  let process r =
+    let open Json in 
+    parse_status_tinyg (r +> "sr")
   in
   send_json (`Assoc [("sr", `String "")]) (wrap_response json_response process)
 
@@ -366,3 +443,8 @@ let wait : 'a. t -> 'a request -> 'a = fun t request ->
     Event.sync (Event.receive sync)
 
 let ignore t request = async t request ignore
+
+let status_report_tinyg t = 
+  ignore t status_tinyg;
+  t.status_report_tinyg
+
