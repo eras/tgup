@@ -172,6 +172,7 @@ let gui sigint_triggered config camera_matrix_arg =
   end in
   ignore (Hook.hook liveview#overlay (draw_overlay env));
   ignore (Hook.hook cnc_control#position_adjust_callback (cnc_moved env));
+  cnc_moved env cnc_control#get_position;
   ignore (Hook.hook liveview#on_button_press (fun cam_xy ->
     Printf.printf "Clicked at %s\n%!" (Gg.V2.to_string cam_xy);
     match !camera_to_world with
