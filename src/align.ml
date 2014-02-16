@@ -140,9 +140,13 @@ let location_label at =
   let open Gg.V3 in
   Printf.sprintf "X:%.3f Y:%.3f Z:%.3f" (x at) (y at) (z at)
 
-let mark_location_widget ~label ~packing cnc f =
+let mark_location_widget ~label ~packing ?tooltip cnc f =
+  let tooltips = GData.tooltips () in
   let mark_box = GPack.hbox ~packing () in
   let mark_button = GButton.button ~label ~packing:mark_box#pack () in
+  ( match tooltip with 
+  | None -> ()
+  | Some text -> tooltips#set_tip mark_button#coerce ~text);
   let mark_label = GMisc.label ~packing:mark_box#pack () in
   mark_label#set_label "Unset";
   let set_mark event =
@@ -178,8 +182,8 @@ let gui sigint_triggered config camera_matrix_arg =
   let points = ref [] in
   let mark_cnc_location : Gg.V3.t option ref = ref None in
   let mark_camera_offset : Gg.V3.t option ref = ref None in
-  let _ = mark_location_widget ~label:"Mark" cnc (tap (save_location mark_cnc_location) @. location_label) ~packing:control_box#pack in
-  let _ = mark_location_widget ~label:"Camera\noffset" cnc (fun at -> let at = save_location_difference mark_camera_offset !mark_cnc_location at in Option.map_default location_label "" at) ~packing:control_box#pack in
+  let _ = mark_location_widget ~label:"Mark" ~tooltip:"Mark the current position of drill" cnc (tap (save_location mark_cnc_location) @. location_label) ~packing:control_box#pack in
+  let _ = mark_location_widget ~label:"Camera\noffset" ~tooltip:"Measure distance between camera and drill mark" cnc (fun at -> let at = save_location_difference mark_camera_offset !mark_cnc_location at in Option.map_default location_label "" at) ~packing:control_box#pack in
   let point_mapping = ref Gg.M3.id in
   let env = object
     method points	   = points
