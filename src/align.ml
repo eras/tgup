@@ -171,9 +171,10 @@ let mark_transformation (cnc1, cnc2) (gcode1, gcode2) =
   let open Gg in
   let cnc_delta = V2.sub cnc2 cnc1 in
   let gcode_delta = V2.sub gcode2 gcode1 in
+  let translation = V2.sub cnc1 gcode1 in
   let angle = V2.angle cnc_delta -. V2.angle gcode_delta in
   let scale = V2.norm cnc_delta /. V2.norm gcode_delta in
-  Printf.sprintf "angle: %.2f scale : %.3f" (angle /. Float.pi *. 180.0) scale
+  Printf.sprintf "angle: %.2f scale : %.3f\ntranslation: %s" (angle /. Float.pi *. 180.0) scale (V2.to_string translation)
 
 let alignment_widget ~cnc ~packing =
   let tooltips = GData.tooltips () in
