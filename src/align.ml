@@ -165,6 +165,56 @@ let v2_of_v3 v2 =
   let open Gg.V2 in
   Gg.V3.v (x v2) (y v2) 0.0
 
+let v2_of_status_tinyg status = Cnc.(Gg.V2.v status.x status.y)
+
+let mark_transformation (cnc1, cnc2) (gcode1, gcode2) =
+  let open Gg in
+  let cnc_delta = V2.sub cnc2 cnc1 in
+  let gcode_delta = V2.sub gcode2 gcode1 in
+  let angle = V2.angle cnc_delta -. V2.angle gcode_delta in
+  let scale = V2.norm cnc_delta /. V2.norm gcode_delta in
+  Printf.sprintf "angle: %.2f scale : %.3f" (angle /. Float.pi *. 180.0) scale
+
+let alignment_widget ~cnc ~packing =
+  let tooltips = GData.tooltips () in
+  let frame = GBin.frame ~packing ~label:"G-code realignment" ~label_xalign:0.5 () in
+  let vbox = GPack.vbox ~packing:frame#add () in
+  let results = GMisc.label ~packing:vbox#pack () in
+  let mark_widget ~callback ~label ~tooltip ~packing =
+    let mark_box = GPack.hbox ~packing () in
+    let mk_mark storage = GEdit.entry ~packing:mark_box#pack ~xalign:1.0 ~width:(10*10) () in
+    let mark_ref_x_entry = mk_mark () in
+    let mark_ref_y_entry = mk_mark () in
+    let mark_button = GButton.button ~label ~packing:mark_box#pack () in
+    let validate_entry entry = Pcre.pmatch ~pat:"^[0-9.]+$" entry#text in
+    let validate_entries () = validate_entry mark_ref_x_entry && validate_entry mark_ref_y_entry in
+    let validate_mark_button_state () =
+      mark_button#misc#set_sensitive (validate_entries ());
+    in
+    ignore (mark_button#connect#clicked (fun () ->
+      if validate_entries () then
+	let x_ref = float_of_string mark_ref_x_entry#text in
+	let y_ref = float_of_string mark_ref_y_entry#text in
+	callback (Gg.V2.v x_ref y_ref)
+    ));
+    validate_mark_button_state ();
+    ignore (mark_ref_x_entry#connect#changed validate_mark_button_state);
+    ignore (mark_ref_y_entry#connect#changed validate_mark_button_state);
+    tooltips#set_tip mark_button#coerce ~text:tooltip
+  in
+  let mark1 = ref None in
+  let mark2 = ref None in
+  let mark_callback cur_mark v =
+    cur_mark := Some (v, v2_of_status_tinyg @@ Cnc.wait cnc Cnc.status_tinyg);
+    match !mark1, !mark2 with
+    | Some (gcode1, cnc1), Some (gcode2, cnc2) ->
+      results#set_text (mark_transformation (cnc1, cnc2) (gcode1, gcode2))
+    | _ -> ()
+  in
+  mark_widget ~callback:(mark_callback mark1) ~label:"Mark 1" ~tooltip:"Mark point 1 in work area" ~packing:vbox#pack;
+  mark_widget ~callback:(mark_callback mark2) ~label:"Mark 2" ~tooltip:"Mark point 1 in work area" ~packing:vbox#pack;
+  ()
+
 let gui sigint_triggered config camera_matrix_arg cnc_camera_offset  =
   let video = V4l2.init "/dev/video0" { width = 640; height = 480 } in
 
@@ -236,6 +286,7 @@ let gui sigint_triggered config camera_matrix_arg cnc_camera_offset  =
       location_label ofs
   in
   let _ = mark_location_widget ~label:"Camera\noffset" ~tooltip:"Measure distance between camera and drill mark" cnc set_camera_offset ~packing:control_box#pack in
+  let _ = alignment_widget ~cnc ~packing:control_box#pack in
   ignore (Hook.hook liveview#overlay (draw_overlay env));
   ignore (Hook.hook cnc_control#position_adjust_callback (cnc_moved env));
   cnc_moved env cnc_control#get_position;
