@@ -19,7 +19,10 @@ let flip_y (a, b) = (a, ~-. b)
 
 let angle_of_matrix m3 = Gg.(V2.angle (V2.tr m3 (V2.v 1.0 0.0)))
 
-let scale_of_matrix m3 = Gg.(V2.tr m3 (V2.v 1.0 1.0))
+let scale_of_matrix m3 = 
+  let open Gg in
+  let vec = V2.v 1.0 1.0 in
+  V2.norm (V2.tr m3 vec) /. V2.norm vec
 
 let translation_of_matrix m3 = Gg.(P2.tr m3 (V2.v 0.0 0.0))
 
@@ -237,7 +240,7 @@ let alignment_widget ~cnc ~packing =
       let text = 
 	let open Gg in
 	let angle = angle_of_matrix gcode_to_cnc in
-	let scale' = V2.x (scale_of_matrix gcode_to_cnc) in
+	let scale' = scale_of_matrix gcode_to_cnc in
 	let translation = translation_of_matrix gcode_to_cnc in
 	Printf.sprintf "angle: %.2f scale : %.3f\ntranslation: %s\n%s"
 	  (angle /. Float.pi *. 180.0)
