@@ -171,7 +171,7 @@ let v2_of_v3 v2 =
 
 let v2_of_status_tinyg status = Cnc.(Gg.V2.v status.x status.y)
 
-let coordinate_transformation (cnc1, cnc2) (gcode1, gcode2) =
+let coordinate_transformation ~scaled (cnc1, cnc2) (gcode1, gcode2) =
   let open Gg in
   let cnc_delta = V2.sub cnc2 cnc1 in
   let gcode_delta = V2.sub gcode2 gcode1 in
@@ -182,7 +182,10 @@ let coordinate_transformation (cnc1, cnc2) (gcode1, gcode2) =
     let open M3 in
     let m = id in
     let ( *| ) = mul in
-    let m = m *| scale2 (V2.v scale' scale') in
+    let m = 
+      if scaled
+      then m *| scale2 (V2.v scale' scale') 
+      else m in
     let m = m *| rot angle in
     let m = Gg.M3.move (V2.sub cnc1 (V2.tr m gcode1)) *| m in
     m
@@ -222,13 +225,15 @@ let alignment_widget ~cnc ~packing =
     cur_mark := Some (v, v2_of_status_tinyg @@ Cnc.wait cnc Cnc.status_tinyg);
     match !mark1, !mark2 with
     | Some (gcode1, cnc1), Some (gcode2, cnc2) ->
-      let gcode_to_cnc = coordinate_transformation (cnc1, cnc2) (gcode1, gcode2) in
-      (*       let _ = *)
-      (*   let m = gcode_to_cnc_matrix in *)
-      (*   Printf.printf "Point 1 %s translated to cnc: %s (should be %s)\n%!" (V2.to_string gcode1) (V2.to_string (P2.tr m gcode1)) (V2.to_string cnc1); *)
-      (*   Printf.printf "Point 2 %s translated to cnc: %s (should be %s)\n%!" (V2.to_string gcode2) (V2.to_string (P2.tr m gcode2)) (V2.to_string cnc2); *)
-      (*   Printf.printf "Delta 1 %s translated to cnc: %s (should be %s)\n%!" (V2.to_string gcode_delta) (V2.to_string (V2.tr m gcode_delta)) (V2.to_string cnc_delta); *)
-      (* in *)
+      let gcode_to_cnc = coordinate_transformation ~scaled:false (cnc1, cnc2) (gcode1, gcode2) in
+      let _ =
+	if false then
+	  let open Gg in
+          let m = gcode_to_cnc in
+          Printf.printf "Point 1 %s translated to cnc: %s (should be %s)\n%!" (V2.to_string gcode1) (V2.to_string (P2.tr m gcode1)) (V2.to_string cnc1);
+          Printf.printf "Point 2 %s translated to cnc: %s (should be %s)\n%!" (V2.to_string gcode2) (V2.to_string (P2.tr m gcode2)) (V2.to_string cnc2);
+          Printf.printf "Delta 1 %s translated to cnc: %s (should be %s)\n%!" (V2.to_string (V2.sub gcode2 gcode1)) (V2.to_string (V2.tr m (V2.sub gcode2 gcode1))) (V2.to_string (V2.sub cnc2 cnc1));
+      in
       let text = 
 	let open Gg in
 	let angle = angle_of_matrix gcode_to_cnc in
