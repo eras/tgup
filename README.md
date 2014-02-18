@@ -15,7 +15,7 @@ part isn't quite complete yet..
 Note that Tgup makes use of submodules.
 
 You need Objective Caml to build tgup. On Debian Sid the following
-might be sufficient:
+might be sufficient, if you are lucky (untested):
 
         % git clone --recursive https://github.com/eras/tgup
 	% sudo apt-get install ocaml-nox opam ocaml-findlib
