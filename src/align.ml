@@ -157,8 +157,11 @@ let mark_location_widget ~label ~packing ?tooltip cnc f =
   let mark_label = GMisc.label ~packing:mark_box#pack () in
   mark_label#set_label "Unset";
   let set_mark event =
-    let status = Cnc.wait cnc Cnc.status_tinyg in
-    mark_label#set_label (f (Gg.V3.v status.x status.y status.z));
+    match cnc with
+    | None -> ()
+    | Some cnc ->
+      let status = Cnc.wait cnc Cnc.status_tinyg in
+      mark_label#set_label (f (Gg.V3.v status.x status.y status.z));
   in
   ignore (mark_button#connect#clicked ~callback:set_mark)
 
@@ -273,7 +276,12 @@ let gui sigint_triggered config camera_matrix_arg cnc_camera_offset  =
   ignore (quit_button#connect#clicked ~callback:destroy);
   let camera_to_world = ref camera_matrix_arg in
   let liveview = LiveView.view ~angle:(Option.map_default angle_of_matrix 0.0 !camera_to_world) ~packing:hbox#add (640, 480) () in
-  let cnc = Cnc.connect config.Common.co_device config.Common.co_bps in
+  let cnc = 
+    try Some (Cnc.connect config.Common.co_device config.Common.co_bps)
+    with exn ->
+      Printf.printf "Trouble connecting cnc (%s), not using it\n%!" (Printexc.to_string exn);
+      None
+  in
   let control_box = GPack.vbox ~packing:(hbox#pack ~expand:false ~padding:5) () in
   let cnc_control = CncControl.view ~packing:(control_box#pack) cnc () in
   let info = GMisc.label ~packing:control_box#pack () in
@@ -330,16 +338,24 @@ let gui sigint_triggered config camera_matrix_arg cnc_camera_offset  =
       location_label ofs
   in
   let _ = mark_location_widget ~label:"Camera\noffset" ~tooltip:"Measure distance between camera and drill mark" cnc set_camera_offset ~packing:control_box#pack in
-  let _ = alignment_widget ~cnc ~packing:control_box#pack in
+  let _ = 
+    match cnc with
+    | None -> ()
+    | Some cnc -> alignment_widget ~cnc ~packing:control_box#pack
+  in
   ignore (Hook.hook liveview#overlay (draw_overlay env));
   ignore (Hook.hook cnc_control#position_adjust_callback (cnc_moved env));
   cnc_moved env cnc_control#get_position;
-  ignore (Hook.hook liveview#on_button_press (fun cam_xy ->
-    Printf.printf "Clicked at %s\n%!" (Gg.V2.to_string cam_xy);
-    match !camera_to_world with
-    | None -> add_calibration_point env (cam_xy, get_cnc_position cnc);
-    | Some camera_to_world-> move_cnc env cam_xy camera_to_world
-  ));
+  ( match cnc with
+  | None -> ()
+  | Some cnc ->
+    ignore (Hook.hook liveview#on_button_press (fun cam_xy ->
+      Printf.printf "Clicked at %s\n%!" (Gg.V2.to_string cam_xy);
+      match !camera_to_world with
+      | None -> add_calibration_point env (cam_xy, get_cnc_position cnc);
+      | Some camera_to_world-> move_cnc env cam_xy camera_to_world
+    ))
+  );
   ignore (Hook.hook liveview#on_mouse_move (show_location env));
   image_updater env ();
   main_window#show ();

@@ -15,9 +15,12 @@ let view ~packing cnc () =
     Hook.issue position_adjust_callback (x_ofs, y_ofs);
     assert (abs_float x_ofs < 5.0);
     assert (abs_float y_ofs < 5.0);
-    Cnc.wait cnc (Cnc.set_feed_rate 100.0);
-    Cnc.wait cnc Cnc.set_relative;
-    Cnc.ignore cnc (Cnc.travel [`X x_ofs; `Y y_ofs])
+    match cnc with
+    | None -> ()
+    | Some cnc ->
+      Cnc.wait cnc (Cnc.set_feed_rate 100.0);
+      Cnc.wait cnc Cnc.set_relative;
+      Cnc.ignore cnc (Cnc.travel [`X x_ofs; `Y y_ofs])
   in
   let move x_dir y_dir _ =
     let length = float_of_string (travel_length#entry#text) in
@@ -30,12 +33,18 @@ let view ~packing cnc () =
   ignore ((GButton.button ~label:"X+" ~packing:(directionals#attach ~left:2 ~top:1) ())#connect#clicked (move (1) (0)));
   ignore ((GButton.button ~label:"X-" ~packing:(directionals#attach ~left:0 ~top:1) ())#connect#clicked (move (-1) (0)));
   let handle_tinyg_report (report : Cnc.status_tinyg) = info#set_label (Printf.sprintf "CNC: X%.3f Y%.3f Z%.3f" report.x report.y report.z) in
-  ignore (Hook.hook (Cnc.status_report_tinyg cnc) handle_tinyg_report);
+  ( match cnc with 
+  | None -> ()
+  | Some cnc -> 
+    ignore (Hook.hook (Cnc.status_report_tinyg cnc) handle_tinyg_report) );
   let () =
-    let status = Cnc.wait cnc Cnc.status_tinyg in
-    cnc_x := status.x;
-    cnc_y := status.y;
-    handle_tinyg_report status;
+    match cnc with
+    | None -> ()
+    | Some cnc ->
+      let status = Cnc.wait cnc Cnc.status_tinyg in
+      cnc_x := status.x;
+      cnc_y := status.y;
+      handle_tinyg_report status;
   in
   object 
     method get_position = (!cnc_x, !cnc_y)
