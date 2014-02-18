@@ -2,7 +2,8 @@ open Gtk
 
 let view ~packing cnc () =
   let vbox = GPack.vbox ~packing () in
-  let directionals = GPack.table ~packing:(vbox#add) ~columns:3 ~rows:3 () in
+  let directionals_alignment = GBin.alignment ~packing:vbox#pack ~padding:(10, 10, 50, 50) ~xalign:1.0 () in
+  let directionals = GPack.table ~packing:directionals_alignment#add ~columns:3 ~rows:3 () in
   let (travel_length, _) = GEdit.combo_box_entry_text ~strings:["0.05"; "0.1"; "1.0"; "10.0"; "20.0"] ~packing:vbox#pack () in
   let info = GMisc.label ~packing:(vbox#pack ~expand:true) () in
   travel_length#entry#set_text "1.0";
