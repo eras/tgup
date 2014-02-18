@@ -15,19 +15,19 @@ part isn't quite complete yet..
 You need Objective Caml to build tgup. On Debian Sid the following
 might be sufficient:
 
-% sudo apt-get install ocaml-nox opam ocaml-findlib
-  # if you already used opam, this is not necessary. You need at least version  1.1.
-% opam init
-  # this step is maybe not necessary:
-% opam update
-% opam install batteries cmdliner yojson pcre ANSITerminal v4l2 gg
-% ./build.sh
+	% sudo apt-get install ocaml-nox opam ocaml-findlib
+	  # if you already used opam, this is not necessary. You need at least version  1.1.
+	% opam init
+	  # this step is maybe not necessary:
+	% opam update
+	% opam install batteries cmdliner yojson pcre ANSITerminal v4l2 gg
+	% ./build.sh
 
 # Using #
 
 Usage:
-% ./main.native --help
-% ./main.native -d /dev/ttyUSB0 -b 115200 upload work.gcode
+	% ./main.native --help
+	% ./main.native -d /dev/ttyUSB0 -b 115200 upload work.gcode
 
 Ctrl-c sends '!' (the TinyG feed hold symbol) to the machine so it
 should be instantenous. If you use a terminal program you need to
