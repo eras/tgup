@@ -69,7 +69,7 @@ let image_updater env =
 	GMain.Io.add_watch
           ~cond:[`IN]
           ~callback:update_image
-          (GMain.Io.channel_of_descr (V4l2.get_fd env#video))
+          (GMain.Io.channel_of_descr env#video#get_fd)
       )
     and unwait_io () =
       match !io_watch with
@@ -84,7 +84,7 @@ let image_updater env =
 	Some ( 
 	  GMain.Idle.add @@ fun () ->
 	    GMain.Idle.remove (Option.get !id);
-	    let frame = V4l2.get_frame env#video in
+	    let frame = env#video#get_frame in
 	    let rgb = frame#rgb_ba in
 	    let now = Unix.gettimeofday () in
 	    incr frames;
@@ -95,7 +95,7 @@ let image_updater env =
 	);
       true
     in
-    V4l2.start env#video;
+    env#video#start ();
     ignore (update_image [])
 
 let cnc_moved env (x_ofs, y_ofs) =
@@ -256,8 +256,12 @@ let alignment_widget ~cnc ~packing =
   ()
 
 let gui sigint_triggered config camera_matrix_arg cnc_camera_offset  =
-  let video = V4l2.init "/dev/video0" { width = 640; height = 480 } in
-
+  let video = 
+    try new Video.v4l2 
+    with exn ->
+      Printf.printf "Trouble opening video (%s), not using it\n%!" (Printexc.to_string exn);
+      new Video.null
+  in
   let main_window = GWindow.window ~border_width:10 () in
   Gobject.set GtkBaseProps.Window.P.allow_shrink main_window#as_window true;
   ignore (main_window#connect#destroy ~callback:destroy);
