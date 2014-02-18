@@ -10,17 +10,21 @@ to drill a hole at that exact point. It also wants to perform
 automatical Gcode realignment from given reference points, but that
 part isn't quite complete yet..
 
-# Compiling #
+# Getting & Compiling #
+
+Note that Tgup makes use of submodules.
 
 You need Objective Caml to build tgup. On Debian Sid the following
 might be sufficient:
 
+        % git clone --recursive https://github.com/eras/tgup
 	% sudo apt-get install ocaml-nox opam ocaml-findlib
 	  # if you already used opam, this is not necessary. You need at least version  1.1.
 	% opam init
 	  # this step is maybe not necessary:
 	% opam update
 	% opam install batteries cmdliner yojson pcre ANSITerminal gg
+	% cd tgup
 	% ./build.sh
 
 # Using #
