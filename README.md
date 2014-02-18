@@ -20,7 +20,7 @@ might be sufficient:
 	% opam init
 	  # this step is maybe not necessary:
 	% opam update
-	% opam install batteries cmdliner yojson pcre ANSITerminal v4l2 gg
+	% opam install batteries cmdliner yojson pcre ANSITerminal gg
 	% ./build.sh
 
 # Using #
