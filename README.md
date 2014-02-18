@@ -1,7 +1,7 @@
 # TinyG Uploader #
 
 tgup is a tool for uploading CNC programs to
-(TinyG)[https://github.com/synthetos/TinyG] from Linux.
+TinyG (https://github.com/synthetos/TinyG) from Linux.
 
 It also incorporates a tool for aligning a camera and the tool, so
 that the camera can be used for finding exact coordinates of some
