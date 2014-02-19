@@ -258,6 +258,57 @@ let alignment_widget ~cnc ~packing =
   mark_widget ~callback:(mark_callback mark2) ~label:"Mark 2" ~tooltip:"Mark point 1 in work area" ~packing:vbox#pack;
   ()
 
+let load_button_widget ~packing () =
+  let button = GButton.button ~label:"Choose file" ~packing () in
+  let filename_chosen_hook = Hook.create () in
+  ignore (button#connect#clicked ~callback:(fun () ->
+    let file_dialog =
+      GWindow.file_chooser_dialog 
+	~title:"Open G-code program"
+	~modal:true
+	~allow_grow:true
+	~action:`OPEN ()
+    in
+    file_dialog#add_select_button_stock `OPEN `OPEN;
+    file_dialog#add_button_stock `CANCEL `CANCEL;
+    file_dialog#set_filter (GFile.filter ~patterns:["*.gc"; "*.nc"; "*.gcode"] ());
+    let result = file_dialog#run () in
+    if result = `OPEN then
+	match file_dialog#filename with
+      | None -> ()
+      | Some name ->
+	Hook.issue filename_chosen_hook name
+    else ();
+    file_dialog#destroy ();
+  ));
+  let obj = object
+      method chosen = filename_chosen_hook
+  end in 
+  obj
+
+let gcode_widget ~packing () =
+  let filename = load_button_widget ~packing () in
+  let gcode_loaded_hook = Hook.create () in
+  let load_gcode filename =
+    let file = open_in filename in
+    let gcode = 
+      try
+	`Value (List.of_enum (Gcode.Parser.parse_gcode (Lexing.from_channel file)))
+      with exn -> `Exn exn
+    in
+    close_in file;
+    match gcode with
+    | `Value gcode -> Hook.issue gcode_loaded_hook gcode
+    | `Exn exn -> Printf.printf "Gcode failed to load: %s\n%!" (Printexc.to_string exn)
+  in
+  ignore (Hook.hook filename#chosen (fun filename ->
+    load_gcode filename
+  ));
+  let obj = object
+      method gcode_loaded = gcode_loaded_hook
+  end in
+  obj
+
 let gui sigint_triggered config camera_matrix_arg cnc_camera_offset  =
   let video = 
     try new Video.v4l2 
@@ -356,6 +407,10 @@ let gui sigint_triggered config camera_matrix_arg cnc_camera_offset  =
       | Some camera_to_world-> move_cnc env cam_xy camera_to_world
     ))
   );
+  let gcode = gcode_widget ~packing:control_box#pack () in
+  ignore (Hook.hook gcode#gcode_loaded (fun gcode ->
+    Printf.printf "Loaded %d instructions\n%!" (List.length gcode)
+  ));
   ignore (Hook.hook liveview#on_mouse_move (show_location env));
   image_updater env ();
   main_window#show ();
