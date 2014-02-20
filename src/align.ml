@@ -286,30 +286,41 @@ let load_button_widget ~packing () =
   end in 
   obj
 
+let load_gcode filename =
+  let file = open_in filename in
+  let gcode = 
+    try
+      `Value (List.of_enum (Gcode.Parser.parse_gcode (Lexing.from_channel file)))
+    with exn -> `Exn exn
+  in
+  close_in file;
+  gcode
+
 let gcode_widget ~packing () =
   let filename = load_button_widget ~packing () in
   let gcode_loaded_hook = Hook.create () in
-  let load_gcode filename =
-    let file = open_in filename in
-    let gcode = 
-      try
-	`Value (List.of_enum (Gcode.Parser.parse_gcode (Lexing.from_channel file)))
-      with exn -> `Exn exn
-    in
-    close_in file;
-    match gcode with
+  ignore (Hook.hook filename#chosen (fun filename ->
+    match load_gcode filename with
     | `Value gcode -> Hook.issue gcode_loaded_hook gcode
     | `Exn exn -> Printf.printf "Gcode failed to load: %s\n%!" (Printexc.to_string exn)
-  in
-  ignore (Hook.hook filename#chosen (fun filename ->
-    load_gcode filename
   ));
   let obj = object
       method gcode_loaded = gcode_loaded_hook
   end in
   obj
 
-let gui sigint_triggered config camera_matrix_arg cnc_camera_offset  =
+let gcode_loader ~packing ~callback ?gcode_filename () =
+  let widget = gcode_widget ~packing () in
+  ( match gcode_filename with
+  | None -> ()
+  | Some filename -> 
+    match load_gcode filename with
+    | `Value v -> callback v
+    | `Exn e -> Printf.printf "Cannot load gcode file\n%!"; ()
+  );
+  ignore (Hook.hook widget#gcode_loaded callback)
+
+let gui sigint_triggered config camera_matrix_arg cnc_camera_offset gcode_filename =
   let video = 
     try new Video.v4l2 
     with exn ->
@@ -407,10 +418,12 @@ let gui sigint_triggered config camera_matrix_arg cnc_camera_offset  =
       | Some camera_to_world-> move_cnc env cam_xy camera_to_world
     ))
   );
-  let gcode = gcode_widget ~packing:control_box#pack () in
-  ignore (Hook.hook gcode#gcode_loaded (fun gcode ->
-    Printf.printf "Loaded %d instructions\n%!" (List.length gcode)
-  ));
+  let gcode = ref None in
+  let set_gcode contents = 
+    Printf.printf "Loaded %d instructions\n%!" (List.length contents);
+    gcode := Some contents
+  in
+  let _ = gcode_loader ~packing:control_box#pack ~callback:set_gcode ?gcode_filename () in
   ignore (Hook.hook liveview#on_mouse_move (show_location env));
   image_updater env ();
   main_window#show ();

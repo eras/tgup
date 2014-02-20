@@ -94,6 +94,10 @@ let camera_offset =
   let doc = "Define cnc-camera offset" in
   Arg.(value & opt (some @@ map v2_of_list_parser list_of_v2 @@ list float) None & info ["camera-offset"] ~doc)
 
+let load_gcode_file =
+  let doc = "G-code file to load" in
+  Arg.(value & opt (some file) None & info ["load"] ~doc)
+
 let default_prompt = 
   let doc = "A standalone G-code uploader for TinyG" in 
   let man = help_subcommands in
@@ -105,7 +109,7 @@ let cmd_upload sigint_triggered =
   Term.info "upload" ~version
 
 let cmd_align sigint_triggered = 
-  Term.(pure (Align.align sigint_triggered) $ common_opts_t $ camera_matrix $ camera_offset),
+  Term.(pure (Align.align sigint_triggered) $ common_opts_t $ camera_matrix $ camera_offset $ load_gcode_file),
   Term.info "align" ~version
 
 let sigint_triggered = new Future.t
