@@ -114,17 +114,75 @@ let cnc_moved env (x_ofs, y_ofs) =
     env#point_mapping := world_to_camera * ((M3.scale2 @@ V2.v 1.0 1.0) *| cnc_movement) * orig;
     Printf.printf "Point mapping: %s\n%!" (M3.to_string !(env#point_mapping))
 
+let render_gcode cairo mapping_matrix (gcode : Gcode.Parser.word list) =
+  let open Cairo in
+  let module State = struct
+    type at = {
+      x : float option;
+      y : float option;
+      z : float option;
+    }
+    type t = {
+      at   : at
+    }
+    let init = {
+      at = { x = None;
+	     y = None;
+	     z = None };
+    }
+
+    let complete_at at position =
+      let module AM = Gcode.Parser.AxisMap in
+      let get key default =
+	try Some (Gcode.Parser.AxisMap.find key position)
+	with Not_found -> default
+      in
+      {
+	x = get `X at.x;
+	y = get `Y at.y;
+	z = get `Z at.z;
+      }
+  end in
+  let open Gcode.Parser in
+  let rec loop (state : State.t) = function
+    | [] -> ()
+    | command::rest ->
+      let state =
+	match command with
+	| Move ((G0 | G1), position, _) ->
+	  ( let _prev = state.at in
+	    let state = { State.at = State.complete_at state.at position } in
+	    match state.at with
+	    | { x = Some x; y = Some y } ->
+	      let xy = Gg.V2.v x y in
+	      let (x', y') = Gg.(V2.to_tuple @@ P2.tr mapping_matrix xy) in
+	      arc cairo x' y' 10.0 0.0 pi2;
+	      fill cairo;
+	      state
+	    | _ -> state )
+	| _ -> state
+      in
+      loop state rest
+  in
+  set_source_rgba cairo 1.0 0.0 0.0 0.5;
+  loop State.init gcode      
+
 let draw_overlay env cairo =
   let open Cairo in
   set_source_rgba cairo 0.0 1.0 0.0 0.5;
   arc cairo 0.0 0.0 20.0 0.0 pi2;
   fill cairo;
   set_source_rgba cairo 1.0 0.0 0.0 0.5;
-  flip List.iter !(env#points) @@ fun ((xy), _) ->
+  ( flip List.iter !(env#points) @@ fun ((xy), _) ->
     let (x, y) = Gg.(V2.to_tuple @@ P2.tr !(env#point_mapping) xy) in
-      (* Printf.printf "Resulting point: %f, %f\n%!" x y; *)
+    (* Printf.printf "Resulting point: %f, %f\n%!" x y; *)
     arc cairo x y 10.0 0.0 pi2;
-    fill cairo
+    fill cairo );
+  match !(env#camera_to_world) with
+  | None -> ()
+  | Some camera_to_world ->
+    let world_to_camera = Gg.M3.inv camera_to_world in
+    Option.may (render_gcode cairo world_to_camera) !(env#gcode)
 
 let move_cnc env cam_xy camera_to_world =
   (* Move the most recently clicked point over the center *)
@@ -362,6 +420,7 @@ let gui sigint_triggered config camera_matrix_arg cnc_camera_offset gcode_filena
   let cnc_camera_offset = ref (Option.map v2_of_v3 cnc_camera_offset) in
   let (coord_mode_selection, _) = GEdit.combo_box_text ~strings:["CNC Mode"; "Camera mode"] ~active:(int_of_coord_mode !current_coord_mode) ~packing:control_box#pack () in
   let point_mapping = ref Gg.M3.id in
+  let gcode = ref None in
   let env = object
     method points	   = points
     method point_mapping   = point_mapping
@@ -370,6 +429,7 @@ let gui sigint_triggered config camera_matrix_arg cnc_camera_offset gcode_filena
     method info		   = info
     method video	   = video
     method cnc_control	   = cnc_control
+    method gcode	   = gcode
   end in
   let set_coord_mode coord_mode =
     ( match !current_coord_mode, coord_mode, !cnc_camera_offset with 
@@ -418,7 +478,6 @@ let gui sigint_triggered config camera_matrix_arg cnc_camera_offset gcode_filena
       | Some camera_to_world-> move_cnc env cam_xy camera_to_world
     ))
   );
-  let gcode = ref None in
   let set_gcode contents = 
     Printf.printf "Loaded %d instructions\n%!" (List.length contents);
     gcode := Some contents
