@@ -182,7 +182,10 @@ let draw_overlay env cairo =
   | None -> ()
   | Some camera_to_world ->
     let world_to_camera = Gg.M3.inv camera_to_world in
-    Option.may (render_gcode cairo world_to_camera) !(env#gcode)
+    let gcode_to_cnc = Option.default Gg.M3.id !(env#gcode_to_cnc) in
+    let ( *| ) = Gg.M3.mul in
+    let matrix = !(env#point_mapping) *| (gcode_to_cnc *| world_to_camera) in
+    Option.may (render_gcode cairo matrix) !(env#gcode)
 
 let move_cnc env cam_xy camera_to_world =
   (* Move the most recently clicked point over the center *)
@@ -256,7 +259,7 @@ let coordinate_transformation ~scaled (cnc1, cnc2) (gcode1, gcode2) =
   in
   gcode_to_cnc_matrix
 
-let alignment_widget ~cnc ~packing =
+let alignment_widget ~cnc ~packing gcode_to_cnc_var =
   let tooltips = GData.tooltips () in
   let frame = GBin.frame ~packing ~label:"G-code realignment" ~label_xalign:0.5 () in
   let vbox = GPack.vbox ~packing:frame#add () in
@@ -290,6 +293,7 @@ let alignment_widget ~cnc ~packing =
     match !mark1, !mark2 with
     | Some (gcode1, cnc1), Some (gcode2, cnc2) ->
       let gcode_to_cnc = coordinate_transformation ~scaled:false (cnc1, cnc2) (gcode1, gcode2) in
+      gcode_to_cnc_var := Some gcode_to_cnc;
       let _ =
 	if false then
 	  let open Gg in
@@ -422,6 +426,7 @@ let gui sigint_triggered config camera_matrix_arg cnc_camera_offset gcode_filena
   let point_mapping = ref Gg.M3.id in
   let gcode = ref None in
   let env = object
+    val gcode_to_cnc = ref None
     method points	   = points
     method point_mapping   = point_mapping
     method liveview	   = liveview
@@ -430,6 +435,7 @@ let gui sigint_triggered config camera_matrix_arg cnc_camera_offset gcode_filena
     method video	   = video
     method cnc_control	   = cnc_control
     method gcode	   = gcode
+    method gcode_to_cnc    = gcode_to_cnc
   end in
   let set_coord_mode coord_mode =
     ( match !current_coord_mode, coord_mode, !cnc_camera_offset with 
@@ -463,7 +469,7 @@ let gui sigint_triggered config camera_matrix_arg cnc_camera_offset gcode_filena
   let _ = 
     match cnc with
     | None -> ()
-    | Some cnc -> alignment_widget ~cnc ~packing:control_box#pack
+    | Some cnc -> alignment_widget ~cnc ~packing:control_box#pack env#gcode_to_cnc
   in
   ignore (Hook.hook liveview#overlay (draw_overlay env));
   ignore (Hook.hook cnc_control#position_adjust_callback (cnc_moved env));
