@@ -167,7 +167,8 @@ let render_gcode cairo mapping_matrix (gcode : Gcode.Parser.word list) =
   set_source_rgba cairo 1.0 0.0 0.0 0.5;
   loop State.init gcode      
 
-let draw_overlay env cairo =
+let draw_overlay env liveview_context =
+  let cairo = liveview_context#cairo in
   let open Cairo in
   set_source_rgba cairo 0.0 1.0 0.0 0.5;
   arc cairo 0.0 0.0 20.0 0.0 pi2;

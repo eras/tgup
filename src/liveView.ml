@@ -46,15 +46,14 @@ let cairo_matrix_of_m3 m =
     y0 = e12 m;
   }
 
-let bounds m (im_width, im_height) =
+let bounds m (x0, y0) (x1, y1) =
   let open Gg in
   let points =
     List.map
       (fun (x, y) ->
 	P2.tr m (V2.v x y)
       )
-      [(~-.im_width /. 2.0, ~-.im_height /. 2.0); (im_width /. 2.0, ~-.im_height /. 2.0);
-       (~-.im_width /. 2.0, im_height /. 2.0); (im_width /. 2.0, im_height /. 2.0)]
+      [(x0, y0); (x1, y0); (x0, y1); (x1, y1)]
   in
   let extreme choose op =
     List.fold_left (
@@ -71,10 +70,15 @@ let bounds m (im_width, im_height) =
   let bottom = extreme V2.y ( < ) in
   (left, right, top, bottom)
 
+let bounds_image m (im_width, im_height) =
+  bounds m
+    (~-.im_width /. 2.0, ~-.im_height /. 2.0)
+    (im_width /. 2.0, im_height /. 2.0)
+
 let fit m (area_width, area_height) (im_width, im_height) =
   let open Gg in
   let ( *| ) = M3.mul in
-  let (left, right, top, bottom) = bounds m (im_width, im_height) in
+  let (left, right, top, bottom) = bounds_image m (im_width, im_height) in
   let width' = right -. left in
   let height' = top -. bottom in
   let m = M3.move (V2.v (~-.left) top) *| m in
@@ -89,7 +93,7 @@ let fit m (area_width, area_height) (im_width, im_height) =
 let center m (area_width, area_height) (im_width, im_height) =
   let open Gg in
   let ( *| ) = M3.mul in
-  let (left, right, top, bottom) = bounds m (im_width, im_height) in
+  let (left, right, top, bottom) = bounds_image m (im_width, im_height) in
   let area_center = V2.v (area_width /. 2.0) (area_height /. 2.0) in
   let matrix_center = V2.v ((left +. right) /. 2.0) ((top +. bottom) /. 2.0) in
   let m = M3.move (V2.sub area_center matrix_center) *| m in
@@ -135,7 +139,12 @@ let view (width, height) ?(angle=0.0) ?packing () =
       inverse_transformation_matrix := Some (Gg.M3.inv m_overlay);
 
       set_matrix cr (cairo_matrix_of_m3 m_overlay);
-      Hook.issue overlay cr
+      let bounds' = bounds m_overlay (~-.im_width /. 2.0, ~-.im_height /. 2.0) (im_width /. 2.0, im_height /. 2.0) in
+      let context = object
+	  method cairo = cr
+	  method bounds = bounds'
+      end in
+      Hook.issue overlay context
   in
   let expose ev =
     show_exn @@ fun () ->
