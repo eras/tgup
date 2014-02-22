@@ -89,8 +89,7 @@ let bounds_image m (im_width, im_height) =
     (im_width /. 2.0, im_height /. 2.0)
 
 let fit m (area_width, area_height) (im_width, im_height) =
-  let open Gg in
-  let ( *| ) = M3.mul in
+  let open Utils.Matrix in
   let (left, right, top, bottom) = bounds_image m (im_width, im_height) in
   let width' = right -. left in
   let height' = top -. bottom in
@@ -104,8 +103,7 @@ let fit m (area_width, area_height) (im_width, im_height) =
   m
 
 let center m (area_width, area_height) (im_width, im_height) =
-  let open Gg in
-  let ( *| ) = M3.mul in
+  let open Utils.Matrix in
   let (left, right, top, bottom) = bounds_image m (im_width, im_height) in
   let area_center = V2.v (area_width /. 2.0) (area_height /. 2.0) in
   let matrix_center = V2.v ((left +. right) /. 2.0) ((top +. bottom) /. 2.0) in
@@ -133,9 +131,8 @@ let view (width, height) ?(angle=0.0) ?packing () =
       arc cr (0.65 *. area_width) (0.65 *. area_height) r 0. pi2;
       fill cr
     | Some (image, image_width, image_height) ->
-      let open Gg in
+      let open Utils.Matrix in
       let (im_width, im_height) = (float image_width, float image_height) in
-      let ( *|| ) a b = M3.mul b a in
       let m = M3.id in
       let m = M3.rot (-. !angle) *|| m in
       let m = fit m (area_width, area_height) (im_width, im_height) in

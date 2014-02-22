@@ -102,9 +102,7 @@ let cnc_moved env xy_delta =
   match !(env#camera_to_world) with
   | None -> ()
   | Some camera_to_world ->
-    let open Gg in
-    let ( *| ) = M3.mul in
-    let ( *|| ) a b = M3.mul b a in
+    let open Utils.Matrix in
     let world_to_camera = M3.inv camera_to_world in
     Printf.printf "Moved by %f, %f\n%!" (V2.x xy_delta) (V2.y xy_delta);
     let cnc_movement = M3.move (V2.neg xy_delta) in
@@ -187,7 +185,7 @@ let render_grid cairo world_to_camera (x0, x1, y0, y1) =
   let text_angle = angle_of_matrix world_to_camera in
   let _ =
     let m = LiveView.m3_of_cairo_matrix (get_font_matrix cairo) in
-    let ( *| ) = Gg.M3.mul in
+    let open Utils.Matrix in
     let m' = Gg.M3.scale2 (Gg.V2.v 1.0 ~-.1.0) *| m in
     set_font_matrix cairo (LiveView.cairo_matrix_of_m3 m')
   in
@@ -252,8 +250,7 @@ let draw_overlay env liveview_context =
   | None -> ()
   | Some camera_to_world ->
     let world_to_camera = Gg.M3.inv camera_to_world in
-    let ( *| ) = Gg.M3.mul in
-    let ( *|| ) a b = Gg.M3.mul b a in
+    let open Utils.Matrix in
     let cnc_mapping = Gg.M3.move (Gg.V2.neg env#cnc_control#get_position) in
     render_grid cairo (cnc_mapping *|| world_to_camera) liveview_context#bounds;
     let gcode_to_cnc = (Option.default Gg.M3.id !(env#gcode_to_cnc)) in
@@ -315,7 +312,7 @@ let coordinate_translation cnc gcode =
   let open Gg in
   let translation = V2.sub cnc gcode in
   let gcode_to_cnc_matrix =
-    let ( *| ) = M3.mul in
+    let open Utils.Matrix in
     let m = Gg.M3.move (V2.sub cnc gcode) in
     m
   in
@@ -331,7 +328,7 @@ let coordinate_transformation ~scaled (cnc1, cnc2) (gcode1, gcode2) =
   let gcode_to_cnc_matrix =
     let open M3 in
     let m = id in
-    let ( *| ) = mul in
+    let open Utils.Matrix in
     let m = 
       if scaled
       then m *| scale2 (V2.v scale' scale') 
