@@ -452,10 +452,10 @@ let gui sigint_triggered config camera_matrix_arg cnc_camera_offset gcode_filena
   let vbox = GPack.vbox ~packing:main_window#add () in
   main_window#add_accel_group accel_group;
   let quit_button = GButton.button ~label:"Quit" ~packing:(vbox#pack ~expand:false) () in
-  let a = quit_button#misc#add_accelerator ~sgn:(cast_button_signal_as_widget_signal GtkButtonProps.Button.S.activate) ~group:accel_group ~modi:[`CONTROL] GdkKeysyms._q in
+  quit_button#misc#add_accelerator ~sgn:(cast_button_signal_as_widget_signal GtkButtonProps.Button.S.activate) ~group:accel_group ~modi:[`CONTROL] GdkKeysyms._q;
+  ignore (quit_button#connect#clicked ~callback:destroy);
   let _ = GMisc.separator `HORIZONTAL ~packing:(vbox#pack ~fill:true ~padding:5) () in
   let hbox = GPack.hbox ~packing:vbox#add () in
-  ignore (quit_button#connect#clicked ~callback:destroy);
   let camera_to_world = ref camera_matrix_arg in
   let liveview = LiveView.view ~angle:(Option.map_default angle_of_matrix 0.0 !camera_to_world) ~packing:hbox#add (640, 480) () in
   let cnc = 
