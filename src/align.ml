@@ -26,19 +26,19 @@ let scale_of_matrix m3 =
 
 let translation_of_matrix m3 = Gg.(P2.tr m3 (V2.v 0.0 0.0))
 
-let add_calibration_point env (cam_xy, cnc_xy) =
-  env#points := (cam_xy, cnc_xy)::!(env#points);
+let add_calibration_point env (cam_xy, tool_xy) =
+  env#points := (cam_xy, tool_xy)::!(env#points);
   ( match !(env#points) with
-  | (xy1, cnc_xy1)::_::_ ->
+  | (xy1, tool_xy1)::_::_ ->
     let open Gg in
-    let (xy2, cnc_xy2) = List.hd (List.rev !(env#points)) in
+    let (xy2, tool_xy2) = List.hd (List.rev !(env#points)) in
     let dcam_xy = V2.sub xy2 xy1 in
-    let dcnc_xy = V2.sub cnc_xy1 cnc_xy2 in (* consider cnc movement to the opposing direction negative *)
+    let dtool_xy = V2.sub tool_xy1 tool_xy2 in (* consider cnc movement to the opposing direction negative *)
     Printf.printf "image point: (%f,%f)\n" (V2.x dcam_xy) (V2.y dcam_xy);
-    Printf.printf "cnc point: (%f,%f)\n" (V2.x dcnc_xy) (V2.y dcnc_xy);
-    let angle = V2.angle dcnc_xy -. V2.angle dcam_xy in
+    Printf.printf "tool point: (%f,%f)\n" (V2.x dtool_xy) (V2.y dtool_xy);
+    let angle = V2.angle dtool_xy -. V2.angle dcam_xy in
     Printf.printf "Angle: %f\n%!" (angle /. pi2 *. 360.0);
-    let scale' = V2.norm dcnc_xy /. V2.norm dcam_xy in
+    let scale' = V2.norm dtool_xy /. V2.norm dcam_xy in
     Printf.printf "Scale: %f\n%!" scale';
 
     let open M3 in
@@ -98,18 +98,18 @@ let image_updater env =
     env#video#start ();
     ignore (update_image [])
 
-let cnc_moved env xy_delta =
+let tool_moved env xy_delta =
   match !(env#camera_to_world) with
   | None -> ()
   | Some camera_to_world ->
     let open Utils.Matrix in
     let world_to_camera = M3.inv camera_to_world in
     Printf.printf "Moved by %f, %f\n%!" (V2.x xy_delta) (V2.y xy_delta);
-    let cnc_movement = M3.move (V2.neg xy_delta) in
-    Printf.printf "Matrix: %s\n%!" (M3.to_string cnc_movement);
-    Printf.printf "Translation of 0.0: %s\n%!" (M3.to_string cnc_movement);
+    let tool_movement = M3.move (V2.neg xy_delta) in
+    Printf.printf "Matrix: %s\n%!" (M3.to_string tool_movement);
+    Printf.printf "Translation of 0.0: %s\n%!" (M3.to_string tool_movement);
     let orig = camera_to_world *| !(env#point_mapping) in
-    env#point_mapping := world_to_camera *| ((M3.scale2 @@ V2.v 1.0 1.0) *|| cnc_movement) *| orig;
+    env#point_mapping := world_to_camera *| ((M3.scale2 @@ V2.v 1.0 1.0) *|| tool_movement) *| orig;
     Printf.printf "Point mapping: %s\n%!" (M3.to_string !(env#point_mapping))
 
 let render_gcode cairo mapping_matrix (gcode : Gcode.Parser.word list) =
@@ -251,13 +251,13 @@ let draw_overlay env liveview_context =
   | Some camera_to_world ->
     let world_to_camera = Gg.M3.inv camera_to_world in
     let open Utils.Matrix in
-    let cnc_mapping = Gg.M3.move (Gg.V2.neg env#cnc_control#get_position) in
-    render_grid cairo (cnc_mapping *|| world_to_camera) liveview_context#bounds;
-    let gcode_to_cnc = (Option.default Gg.M3.id !(env#gcode_to_cnc)) in
-    let matrix = world_to_camera *| cnc_mapping *| gcode_to_cnc in
+    let tool_mapping = Gg.M3.move (Gg.V2.neg env#cnc_control#get_position) in
+    render_grid cairo (tool_mapping *|| world_to_camera) liveview_context#bounds;
+    let gcode_to_tool = (Option.default Gg.M3.id !(env#gcode_to_tool)) in
+    let matrix = world_to_camera *| tool_mapping *| gcode_to_tool in
     Option.may (render_gcode cairo matrix) !(env#gcode)
 
-let move_cnc env cam_xy camera_to_world =
+let move_tool env cam_xy camera_to_world =
   (* Move the most recently clicked point over the center *)
   let open Gg in
   let move = P2.tr camera_to_world cam_xy in
@@ -296,7 +296,7 @@ let mark_location_widget ~label ~packing ?tooltip cnc f =
   in
   ignore (mark_button#connect#clicked ~callback:set_mark)
 
-let get_cnc_position cnc =
+let get_tool_position cnc =
   let status = Cnc.wait cnc Cnc.status_tinyg in
   Gg.V2.v status.x status.y
 
@@ -308,24 +308,24 @@ let v2_of_v3 v2 =
 
 let v2_of_status_tinyg status = Cnc.(Gg.V2.v status.x status.y)
 
-let coordinate_translation cnc gcode =
+let coordinate_translation src dst =
   let open Gg in
-  let translation = V2.sub cnc gcode in
-  let gcode_to_cnc_matrix =
+  let translation = V2.sub src dst in
+  let src_to_dst_matrix =
     let open Utils.Matrix in
-    let m = Gg.M3.move (V2.sub cnc gcode) in
+    let m = Gg.M3.move (V2.sub src dst) in
     m
   in
-  gcode_to_cnc_matrix 
+  src_to_dst_matrix 
 
-let coordinate_transformation ~scaled (cnc1, cnc2) (gcode1, gcode2) =
+let coordinate_transformation ~scaled (src1, src2) (dst1, dst2) =
   let open Gg in
-  let cnc_delta = V2.sub cnc2 cnc1 in
-  let gcode_delta = V2.sub gcode2 gcode1 in
-  let translation = V2.sub cnc1 gcode1 in
-  let angle = V2.angle cnc_delta -. V2.angle gcode_delta in
-  let scale' = V2.norm cnc_delta /. V2.norm gcode_delta in
-  let gcode_to_cnc_matrix =
+  let src_delta = V2.sub src2 src1 in
+  let dst_delta = V2.sub dst2 dst1 in
+  let translation = V2.sub src1 dst1 in
+  let angle = V2.angle src_delta -. V2.angle dst_delta in
+  let scale' = V2.norm src_delta /. V2.norm dst_delta in
+  let src_to_dst_matrix =
     let open M3 in
     let m = id in
     let open Utils.Matrix in
@@ -334,12 +334,12 @@ let coordinate_transformation ~scaled (cnc1, cnc2) (gcode1, gcode2) =
       then m *| scale2 (V2.v scale' scale') 
       else m in
     let m = m *| rot angle in
-    let m = Gg.M3.move (V2.sub cnc1 (V2.tr m gcode1)) *| m in
+    let m = Gg.M3.move (V2.sub src1 (V2.tr m dst1)) *| m in
     m
   in
-  gcode_to_cnc_matrix
+  src_to_dst_matrix
 
-let alignment_widget ~cnc ~packing gcode_to_cnc_var =
+let alignment_widget ~cnc ~packing gcode_to_tool_var =
   let tooltips = GData.tooltips () in
   let frame = GBin.frame ~packing ~label:"G-code realignment" ~label_xalign:0.5 () in
   let vbox = GPack.vbox ~packing:frame#add () in
@@ -368,38 +368,38 @@ let alignment_widget ~cnc ~packing gcode_to_cnc_var =
   in
   let mark1 = ref None in
   let mark2 = ref None in
-  let set_matrix gcode_to_cnc =
-    gcode_to_cnc_var := Some gcode_to_cnc;
+  let set_matrix gcode_to_tool =
+    gcode_to_tool_var := Some gcode_to_tool;
     let text = 
       let open Gg in
-      let angle = angle_of_matrix gcode_to_cnc in
-      let scale' = scale_of_matrix gcode_to_cnc in
-      let translation = translation_of_matrix gcode_to_cnc in
+      let angle = angle_of_matrix gcode_to_tool in
+      let scale' = scale_of_matrix gcode_to_tool in
+      let translation = translation_of_matrix gcode_to_tool in
       Printf.sprintf "angle: %.2f scale : %.3f\ntranslation: %s\n%s"
 	(angle /. Float.pi *. 180.0)
 	scale'
 	(V2.to_string translation)
-	(M3.to_string gcode_to_cnc)
+	(M3.to_string gcode_to_tool)
     in
     results#set_text text
   in
   let mark_callback cur_mark v =
     cur_mark := Some (v, v2_of_status_tinyg @@ Cnc.wait cnc Cnc.status_tinyg);
     match !mark1, !mark2 with
-    | Some (gcode1, cnc1), None ->
-      let gcode_to_cnc = coordinate_translation cnc1 gcode1 in
-      set_matrix gcode_to_cnc
-    | Some (gcode1, cnc1), Some (gcode2, cnc2) ->
-      let gcode_to_cnc = coordinate_transformation ~scaled:false (cnc1, cnc2) (gcode1, gcode2) in
+    | Some (gcode1, tool1), None ->
+      let gcode_to_tool = coordinate_translation tool1 gcode1 in
+      set_matrix gcode_to_tool
+    | Some (gcode1, tool1), Some (gcode2, tool2) ->
+      let gcode_to_tool = coordinate_transformation ~scaled:false (tool1, tool2) (gcode1, gcode2) in
       let _ =
 	if false then
 	  let open Gg in
-          let m = gcode_to_cnc in
-          Printf.printf "Point 1 %s translated to cnc: %s (should be %s)\n%!" (V2.to_string gcode1) (V2.to_string (P2.tr m gcode1)) (V2.to_string cnc1);
-          Printf.printf "Point 2 %s translated to cnc: %s (should be %s)\n%!" (V2.to_string gcode2) (V2.to_string (P2.tr m gcode2)) (V2.to_string cnc2);
-          Printf.printf "Delta 1 %s translated to cnc: %s (should be %s)\n%!" (V2.to_string (V2.sub gcode2 gcode1)) (V2.to_string (V2.tr m (V2.sub gcode2 gcode1))) (V2.to_string (V2.sub cnc2 cnc1));
+          let m = gcode_to_tool in
+          Printf.printf "Point 1 %s translated to tool: %s (should be %s)\n%!" (V2.to_string gcode1) (V2.to_string (P2.tr m gcode1)) (V2.to_string tool1);
+          Printf.printf "Point 2 %s translated to tool: %s (should be %s)\n%!" (V2.to_string gcode2) (V2.to_string (P2.tr m gcode2)) (V2.to_string tool2);
+          Printf.printf "Delta 1 %s translated to tool: %s (should be %s)\n%!" (V2.to_string (V2.sub gcode2 gcode1)) (V2.to_string (V2.tr m (V2.sub gcode2 gcode1))) (V2.to_string (V2.sub tool2 tool1));
       in
-      set_matrix gcode_to_cnc
+      set_matrix gcode_to_tool
     | _ -> ()
   in
   mark_widget ~callback:(mark_callback mark1) ~label:"Mark 1" ~tooltip:"Mark point 1 in work area" ~packing:vbox#pack;
@@ -471,7 +471,7 @@ let gcode_loader ~packing ~callback ?gcode_filename () =
 (* The need of this function probably is indicative of a bug in LablGTK2? *)
 let cast_button_signal_as_widget_signal (x : ([`button], unit -> unit) GtkSignal.t) : (Gtk.widget, unit -> unit) GtkSignal.t = Obj.magic x
 
-let gui sigint_triggered config camera_matrix_arg cnc_camera_offset gcode_filename =
+let gui sigint_triggered config camera_matrix_arg tool_camera_offset gcode_filename =
   let accel_group = GtkData.AccelGroup.create () in
   let video = 
     try new Video.v4l2 
@@ -502,23 +502,23 @@ let gui sigint_triggered config camera_matrix_arg cnc_camera_offset gcode_filena
   let cnc_control = CncControl.view ~packing:(control_box#pack) cnc () in
   let info = GMisc.label ~packing:control_box#pack () in
   let int_of_coord_mode = function
-  | `CoordModeCNC -> 0
+  | `CoordModeTool -> 0
   | `CoordModeCamera -> 1
   in
   let coord_mode_of_int = function
-  | 0 -> `CoordModeCNC
+  | 0 -> `CoordModeTool
   | 1 -> `CoordModeCamera
   | _ -> assert false
   in
-  let current_coord_mode = ref `CoordModeCNC in
+  let current_coord_mode = ref `CoordModeTool in
   let points = ref [] in
-  let mark_cnc_location = ref None in
-  let cnc_camera_offset = ref (Option.map v2_of_v3 cnc_camera_offset) in
-  let (coord_mode_selection, _) = GEdit.combo_box_text ~strings:["CNC Mode"; "Camera mode"] ~active:(int_of_coord_mode !current_coord_mode) ~packing:control_box#pack () in
+  let mark_tool_location = ref None in
+  let tool_camera_offset = ref (Option.map v2_of_v3 tool_camera_offset) in
+  let (coord_mode_selection, _) = GEdit.combo_box_text ~strings:["Tool mode"; "Camera mode"] ~active:(int_of_coord_mode !current_coord_mode) ~packing:control_box#pack () in
   let point_mapping = ref Gg.M3.id in
   let gcode = ref None in
   let env = object
-    val gcode_to_cnc = ref None
+    val gcode_to_tool = ref None
     method points	   = points
     method point_mapping   = point_mapping
     method liveview	   = liveview
@@ -527,16 +527,16 @@ let gui sigint_triggered config camera_matrix_arg cnc_camera_offset gcode_filena
     method video	   = video
     method cnc_control	   = cnc_control
     method gcode	   = gcode
-    method gcode_to_cnc    = gcode_to_cnc
+    method gcode_to_tool    = gcode_to_tool
   end in
   let set_coord_mode coord_mode =
-    ( match !current_coord_mode, coord_mode, !cnc_camera_offset with 
-    | `CoordModeCNC, `CoordModeCamera, Some offset ->
+    ( match !current_coord_mode, coord_mode, !tool_camera_offset with 
+    | `CoordModeTool, `CoordModeCamera, Some offset ->
       current_coord_mode := `CoordModeCamera;
       let offset' = Gg.V3.neg offset in
       env#cnc_control#adjust_position (Gg.V2.v (Gg.V3.x offset') (Gg.V3.y offset'))
-    | `CoordModeCamera, `CoordModeCNC, Some offset ->
-      current_coord_mode := `CoordModeCNC;
+    | `CoordModeCamera, `CoordModeTool, Some offset ->
+      current_coord_mode := `CoordModeTool;
       env#cnc_control#adjust_position (Gg.V2.v (Gg.V3.x offset) (Gg.V3.y offset))
     | _ -> 
       () );
@@ -545,13 +545,13 @@ let gui sigint_triggered config camera_matrix_arg cnc_camera_offset gcode_filena
   ignore (coord_mode_selection#connect#changed (fun () ->
     set_coord_mode (coord_mode_of_int coord_mode_selection#active)
   ));
-  let _ = mark_location_widget ~label:"Mark" ~tooltip:"Mark the current position of drill" cnc (tap (save_location mark_cnc_location) @. location_label) ~packing:control_box#pack in
+  let _ = mark_location_widget ~label:"Mark" ~tooltip:"Mark the current position of drill" cnc (tap (save_location mark_tool_location) @. location_label) ~packing:control_box#pack in
   let set_camera_offset at =
-    match save_location_difference cnc_camera_offset !mark_cnc_location at with
+    match save_location_difference tool_camera_offset !mark_tool_location at with
     | None -> ""
     | Some ofs ->
       ( match !current_coord_mode with
-      | `CoordModeCNC ->
+      | `CoordModeTool ->
 	current_coord_mode := `CoordModeCamera;
 	coord_mode_selection#set_active (int_of_coord_mode !current_coord_mode)
       | _ -> () );
@@ -561,19 +561,19 @@ let gui sigint_triggered config camera_matrix_arg cnc_camera_offset gcode_filena
   let _ = 
     match cnc with
     | None -> ()
-    | Some cnc -> alignment_widget ~cnc ~packing:control_box#pack env#gcode_to_cnc
+    | Some cnc -> alignment_widget ~cnc ~packing:control_box#pack env#gcode_to_tool
   in
   ignore (Hook.hook liveview#overlay (draw_overlay env));
-  ignore (Hook.hook cnc_control#position_adjust_callback (cnc_moved env));
-  cnc_moved env cnc_control#get_position;
+  ignore (Hook.hook cnc_control#position_adjust_callback (tool_moved env));
+  tool_moved env cnc_control#get_position;
   ( match cnc with
   | None -> ()
   | Some cnc ->
     ignore (Hook.hook liveview#on_button_press (fun cam_xy ->
       Printf.printf "Clicked at %s\n%!" (Gg.V2.to_string cam_xy);
       match !camera_to_world with
-      | None -> add_calibration_point env (cam_xy, get_cnc_position cnc);
-      | Some camera_to_world-> move_cnc env cam_xy camera_to_world
+      | None -> add_calibration_point env (cam_xy, get_tool_position cnc);
+      | Some camera_to_world-> move_tool env cam_xy camera_to_world
     ))
   );
   let set_gcode contents = 
