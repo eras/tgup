@@ -322,7 +322,6 @@ let coordinate_transformation ~scaled (src1, src2) (dst1, dst2) =
   let open Gg in
   let src_delta = V2.sub src2 src1 in
   let dst_delta = V2.sub dst2 dst1 in
-  let translation = V2.sub src1 dst1 in
   let angle = V2.angle src_delta -. V2.angle dst_delta in
   let scale' = V2.norm src_delta /. V2.norm dst_delta in
   let src_to_dst_matrix =
