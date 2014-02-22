@@ -165,7 +165,57 @@ let render_gcode cairo mapping_matrix (gcode : Gcode.Parser.word list) =
       loop state rest
   in
   set_source_rgba cairo 1.0 0.0 0.0 0.5;
-  loop State.init gcode      
+  loop State.init gcode
+
+let minmax (x, y) = (min x y, max x y)
+
+let for_float_range x0 x_step x1 f =
+  let rec loop x =
+    if x < x1 then 
+      let _ = () in
+      f x;
+      loop (x +. x_step)
+    else 
+      ()
+  in
+  loop x0
+
+let render_grid cairo world_to_camera (x0, x1, y0, y1) =
+  let open Cairo in
+  let camera_to_world = Gg.M3.inv world_to_camera in
+  let map x y = 
+    let xy = Gg.V2.v x y in
+    let (x', y') = Gg.(V2.to_tuple @@ P2.tr world_to_camera xy) in
+    (x', y')
+  in
+  let map' x y = 
+    let xy = Gg.V2.v x y in
+    let (x', y') = Gg.(V2.to_tuple @@ P2.tr camera_to_world xy) in
+    (x', y')
+  in
+  (* limits in camera coordinates *)
+  let ((x0, y0), (x1, y1)) = (map' x0 y0, map' x1 y1) in
+  let ((x0, x1), (y0, y1)) = (minmax (x0, x1), minmax (y0, y1)) in
+  let mapped f ~x ~y =
+    let (x', y') = map x y in
+    f ~x:x' ~y:y'
+  in
+  set_line_width cairo 1.0;
+  set_source_rgba cairo 0.0 0.0 0.0 0.5;
+  let density = 1.0 in
+  let align f = f -. mod_float f density in
+  for_float_range (align (x0 -. density)) density (align (x1 +. density))
+    (fun x ->
+      mapped (move_to cairo) ~x ~y:y0;
+      mapped (line_to cairo) ~x ~y:y1;
+      stroke cairo;
+    );
+  for_float_range (align (y0 -. density)) density (align (y1 +. density))
+    (fun y ->
+      mapped (move_to cairo) ~x:x0 ~y;
+      mapped (line_to cairo) ~x:x1 ~y;
+      stroke cairo;
+    )
 
 let draw_overlay env liveview_context =
   let cairo = liveview_context#cairo in
@@ -183,8 +233,9 @@ let draw_overlay env liveview_context =
   | None -> ()
   | Some camera_to_world ->
     let world_to_camera = Gg.M3.inv camera_to_world in
-    let gcode_to_cnc = Option.default Gg.M3.id !(env#gcode_to_cnc) in
     let ( *| ) = Gg.M3.mul in
+    render_grid cairo (!(env#point_mapping) *| world_to_camera) liveview_context#bounds;
+    let gcode_to_cnc = Option.default Gg.M3.id !(env#gcode_to_cnc) in
     let matrix = !(env#point_mapping) *| (gcode_to_cnc *| world_to_camera) in
     Option.may (render_gcode cairo matrix) !(env#gcode)
 
