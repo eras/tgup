@@ -98,7 +98,7 @@ let image_updater env =
     env#video#start ();
     ignore (update_image [])
 
-let cnc_moved env (x_ofs, y_ofs) =
+let cnc_moved env xy_delta =
   match !(env#camera_to_world) with
   | None -> ()
   | Some camera_to_world ->
@@ -106,8 +106,8 @@ let cnc_moved env (x_ofs, y_ofs) =
     let ( *| ) = M3.mul in
     let ( *|| ) a b = M3.mul b a in
     let world_to_camera = M3.inv camera_to_world in
-    Printf.printf "Moved by %f, %f\n%!" x_ofs y_ofs;
-    let cnc_movement = M3.move (V2.v ~-.x_ofs ~-.y_ofs) in
+    Printf.printf "Moved by %f, %f\n%!" (V2.x xy_delta) (V2.y xy_delta);
+    let cnc_movement = M3.move (V2.neg xy_delta) in
     Printf.printf "Matrix: %s\n%!" (M3.to_string cnc_movement);
     Printf.printf "Translation of 0.0: %s\n%!" (M3.to_string cnc_movement);
     let orig = camera_to_world *| !(env#point_mapping) in
@@ -262,7 +262,7 @@ let move_cnc env cam_xy camera_to_world =
   (* Move the most recently clicked point over the center *)
   let open Gg in
   let move = P2.tr camera_to_world cam_xy in
-  env#cnc_control#adjust_position (V2.x move) (V2.y move)
+  env#cnc_control#adjust_position move
 
 let save_location var at = 
   var := Some at
@@ -519,10 +519,10 @@ let gui sigint_triggered config camera_matrix_arg cnc_camera_offset gcode_filena
     | `CoordModeCNC, `CoordModeCamera, Some offset ->
       current_coord_mode := `CoordModeCamera;
       let offset' = Gg.V3.neg offset in
-      env#cnc_control#adjust_position (Gg.V3.x offset') (Gg.V3.y offset')
+      env#cnc_control#adjust_position (Gg.V2.v (Gg.V3.x offset') (Gg.V3.y offset'))
     | `CoordModeCamera, `CoordModeCNC, Some offset ->
       current_coord_mode := `CoordModeCNC;
-      env#cnc_control#adjust_position (Gg.V3.x offset) (Gg.V3.y offset)
+      env#cnc_control#adjust_position (Gg.V2.v (Gg.V3.x offset) (Gg.V3.y offset))
     | _ -> 
       () );
     coord_mode_selection#set_active (int_of_coord_mode !current_coord_mode)

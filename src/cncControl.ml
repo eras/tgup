@@ -13,7 +13,7 @@ let view ~packing cnc () =
   let move_by x_ofs y_ofs =
     cnc_x := !cnc_x +. x_ofs;
     cnc_y := !cnc_y +. y_ofs;
-    Hook.issue position_adjust_callback (x_ofs, y_ofs);
+    Hook.issue position_adjust_callback (Gg.V2.v x_ofs y_ofs);
     assert (abs_float x_ofs < 5.0);
     assert (abs_float y_ofs < 5.0);
     match cnc with
@@ -48,7 +48,7 @@ let view ~packing cnc () =
       handle_tinyg_report status;
   in
   object 
-    method get_position = (!cnc_x, !cnc_y)
-    method adjust_position x_ofs y_ofs = move_by x_ofs y_ofs
+    method get_position = Gg.V2.v !cnc_x !cnc_y
+    method adjust_position xy = move_by (Gg.V2.x xy) (Gg.V2.y xy)
     method position_adjust_callback = position_adjust_callback
   end
