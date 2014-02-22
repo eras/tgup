@@ -313,7 +313,7 @@ let coordinate_translation src dst =
   let translation = V2.sub src dst in
   let src_to_dst_matrix =
     let open Utils.Matrix in
-    let m = Gg.M3.move (V2.sub src dst) in
+    let m = Gg.M3.move translation in
     m
   in
   src_to_dst_matrix 
