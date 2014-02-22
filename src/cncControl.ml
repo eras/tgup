@@ -1,5 +1,9 @@
 open Gtk
 
+type coord_mode = 
+| CoordModeTool
+| CoordModeCamera
+
 let view ~packing cnc () =
   let vbox = GPack.vbox ~packing () in
   let directionals_alignment = GBin.alignment ~packing:vbox#pack ~padding:(10, 10, 50, 50) ~xalign:1.0 () in
@@ -10,6 +14,12 @@ let view ~packing cnc () =
   let cnc_x = ref 0.0  in
   let cnc_y = ref 0.0 in
   let position_adjust_callback = Hook.create () in
+  let coord_mode = ref CoordModeTool in
+  let camera_offset = ref (Gg.V2.v 0.0 0.0) in
+  let coord_mode_offset = function
+    | CoordModeTool -> Gg.V2.v 0.0 0.0
+    | CoordModeCamera -> !camera_offset
+  in
   let move_by x_ofs y_ofs =
     cnc_x := !cnc_x +. x_ofs;
     cnc_y := !cnc_y +. y_ofs;
@@ -48,7 +58,22 @@ let view ~packing cnc () =
       handle_tinyg_report status;
   in
   object 
-    method get_position = Gg.V2.v !cnc_x !cnc_y
+    method get_position =
+      Gg.V2.sub (Gg.V2.v !cnc_x !cnc_y) (coord_mode_offset !coord_mode)
     method adjust_position xy = move_by (Gg.V2.x xy) (Gg.V2.y xy)
     method position_adjust_callback = position_adjust_callback
+
+    method get_coord_mode = !coord_mode
+    method set_coord_mode coord_mode' =
+      let coord_ofs0 = coord_mode_offset !coord_mode in
+      let coord_ofs1 = coord_mode_offset coord_mode' in
+      let coord_delta = Gg.V2.sub coord_ofs1 coord_ofs0 in
+      let (x_ofs, y_ofs) = Gg.V2.to_tuple coord_delta in
+      coord_mode := coord_mode';
+      match cnc with
+      | None -> ()
+      | Some cnc -> 
+	Cnc.wait cnc (Cnc.set_feed_rate 100.0);
+	Cnc.wait cnc Cnc.set_relative;
+	Cnc.ignore cnc (Cnc.travel [`X x_ofs; `Y y_ofs])
   end
