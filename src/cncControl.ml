@@ -5,6 +5,11 @@ type coord_mode =
 | CoordModeCamera
 
 let view ~packing cnc () =
+  let with_cnc f =
+    match cnc with
+    | None -> ()
+    | Some cnc -> f cnc
+  in
   let vbox = GPack.vbox ~packing () in
   let directionals_alignment = GBin.alignment ~packing:vbox#pack ~padding:(10, 10, 50, 50) ~xalign:1.0 () in
   let directionals = GPack.table ~packing:directionals_alignment#add ~columns:3 ~rows:3 () in
@@ -26,9 +31,7 @@ let view ~packing cnc () =
     Hook.issue position_adjust_callback (Gg.V2.v x_ofs y_ofs);
     assert (abs_float x_ofs < 5.0);
     assert (abs_float y_ofs < 5.0);
-    match cnc with
-    | None -> ()
-    | Some cnc ->
+    with_cnc @@ fun cnc ->
       Cnc.wait cnc (Cnc.set_feed_rate 100.0);
       Cnc.wait cnc Cnc.set_relative;
       Cnc.ignore cnc (Cnc.travel [`X x_ofs; `Y y_ofs])
@@ -44,19 +47,13 @@ let view ~packing cnc () =
   ignore ((GButton.button ~label:"X+" ~packing:(directionals#attach ~left:2 ~top:1) ())#connect#clicked (move (1) (0)));
   ignore ((GButton.button ~label:"X-" ~packing:(directionals#attach ~left:0 ~top:1) ())#connect#clicked (move (-1) (0)));
   let handle_tinyg_report (report : Cnc.status_tinyg) = info#set_label (Printf.sprintf "CNC: X%.3f Y%.3f Z%.3f" report.x report.y report.z) in
-  ( match cnc with 
-  | None -> ()
-  | Some cnc -> 
-    ignore (Hook.hook (Cnc.status_report_tinyg cnc) handle_tinyg_report) );
-  let () =
-    match cnc with
-    | None -> ()
-    | Some cnc ->
-      let status = Cnc.wait cnc Cnc.status_tinyg in
-      cnc_x := status.x;
-      cnc_y := status.y;
-      handle_tinyg_report status;
-  in
+  with_cnc (fun cnc ->
+    ignore (Hook.hook (Cnc.status_report_tinyg cnc) handle_tinyg_report);
+    let status = Cnc.wait cnc Cnc.status_tinyg in
+    cnc_x := status.x;
+    cnc_y := status.y;
+    handle_tinyg_report status
+  );
   object 
     method get_position =
       Gg.V2.sub (Gg.V2.v !cnc_x !cnc_y) (coord_mode_offset !coord_mode)
@@ -70,9 +67,7 @@ let view ~packing cnc () =
       let coord_delta = Gg.V2.sub coord_ofs1 coord_ofs0 in
       let (x_ofs, y_ofs) = Gg.V2.to_tuple coord_delta in
       coord_mode := coord_mode';
-      match cnc with
-      | None -> ()
-      | Some cnc -> 
+      with_cnc @@ fun cnc ->
 	Cnc.wait cnc (Cnc.set_feed_rate 100.0);
 	Cnc.wait cnc Cnc.set_relative;
 	Cnc.ignore cnc (Cnc.travel [`X x_ofs; `Y y_ofs])
