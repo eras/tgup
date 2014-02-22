@@ -103,15 +103,15 @@ let cnc_moved env (x_ofs, y_ofs) =
   | None -> ()
   | Some camera_to_world ->
     let open Gg in
-    let ( * ) = M3.mul in
-    let ( *| ) a b = M3.mul b a in
+    let ( *| ) = M3.mul in
+    let ( *|| ) a b = M3.mul b a in
     let world_to_camera = M3.inv camera_to_world in
     Printf.printf "Moved by %f, %f\n%!" x_ofs y_ofs;
     let cnc_movement = M3.move (V2.v ~-.x_ofs ~-.y_ofs) in
     Printf.printf "Matrix: %s\n%!" (M3.to_string cnc_movement);
     Printf.printf "Translation of 0.0: %s\n%!" (M3.to_string cnc_movement);
-    let orig = camera_to_world * !(env#point_mapping) in
-    env#point_mapping := world_to_camera * ((M3.scale2 @@ V2.v 1.0 1.0) *| cnc_movement) * orig;
+    let orig = camera_to_world *| !(env#point_mapping) in
+    env#point_mapping := world_to_camera *| ((M3.scale2 @@ V2.v 1.0 1.0) *|| cnc_movement) *| orig;
     Printf.printf "Point mapping: %s\n%!" (M3.to_string !(env#point_mapping))
 
 let render_gcode cairo mapping_matrix (gcode : Gcode.Parser.word list) =
