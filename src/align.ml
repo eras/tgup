@@ -311,6 +311,16 @@ let v2_of_v3 v2 =
 
 let v2_of_status_tinyg status = Cnc.(Gg.V2.v status.x status.y)
 
+let coordinate_translation cnc gcode =
+  let open Gg in
+  let translation = V2.sub cnc gcode in
+  let gcode_to_cnc_matrix =
+    let ( *| ) = M3.mul in
+    let m = Gg.M3.move (V2.sub cnc gcode) in
+    m
+  in
+  gcode_to_cnc_matrix 
+
 let coordinate_transformation ~scaled (cnc1, cnc2) (gcode1, gcode2) =
   let open Gg in
   let cnc_delta = V2.sub cnc2 cnc1 in
@@ -361,12 +371,29 @@ let alignment_widget ~cnc ~packing gcode_to_cnc_var =
   in
   let mark1 = ref None in
   let mark2 = ref None in
+  let set_matrix gcode_to_cnc =
+    gcode_to_cnc_var := Some gcode_to_cnc;
+    let text = 
+      let open Gg in
+      let angle = angle_of_matrix gcode_to_cnc in
+      let scale' = scale_of_matrix gcode_to_cnc in
+      let translation = translation_of_matrix gcode_to_cnc in
+      Printf.sprintf "angle: %.2f scale : %.3f\ntranslation: %s\n%s"
+	(angle /. Float.pi *. 180.0)
+	scale'
+	(V2.to_string translation)
+	(M3.to_string gcode_to_cnc)
+    in
+    results#set_text text
+  in
   let mark_callback cur_mark v =
     cur_mark := Some (v, v2_of_status_tinyg @@ Cnc.wait cnc Cnc.status_tinyg);
     match !mark1, !mark2 with
+    | Some (gcode1, cnc1), None ->
+      let gcode_to_cnc = coordinate_translation cnc1 gcode1 in
+      set_matrix gcode_to_cnc
     | Some (gcode1, cnc1), Some (gcode2, cnc2) ->
       let gcode_to_cnc = coordinate_transformation ~scaled:false (cnc1, cnc2) (gcode1, gcode2) in
-      gcode_to_cnc_var := Some gcode_to_cnc;
       let _ =
 	if false then
 	  let open Gg in
@@ -375,18 +402,7 @@ let alignment_widget ~cnc ~packing gcode_to_cnc_var =
           Printf.printf "Point 2 %s translated to cnc: %s (should be %s)\n%!" (V2.to_string gcode2) (V2.to_string (P2.tr m gcode2)) (V2.to_string cnc2);
           Printf.printf "Delta 1 %s translated to cnc: %s (should be %s)\n%!" (V2.to_string (V2.sub gcode2 gcode1)) (V2.to_string (V2.tr m (V2.sub gcode2 gcode1))) (V2.to_string (V2.sub cnc2 cnc1));
       in
-      let text = 
-	let open Gg in
-	let angle = angle_of_matrix gcode_to_cnc in
-	let scale' = scale_of_matrix gcode_to_cnc in
-	let translation = translation_of_matrix gcode_to_cnc in
-	Printf.sprintf "angle: %.2f scale : %.3f\ntranslation: %s\n%s"
-	  (angle /. Float.pi *. 180.0)
-	  scale'
-	  (V2.to_string translation)
-	  (M3.to_string gcode_to_cnc)
-      in
-      results#set_text text
+      set_matrix gcode_to_cnc
     | _ -> ()
   in
   mark_widget ~callback:(mark_callback mark1) ~label:"Mark 1" ~tooltip:"Mark point 1 in work area" ~packing:vbox#pack;
