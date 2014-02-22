@@ -54,6 +54,17 @@ let view ~packing cnc () =
     cnc_y := status.y;
     handle_tinyg_report status
   );
+  let adjust_coord_mode f =
+    let coord_ofs0 = coord_mode_offset !coord_mode in
+    f ();
+    let coord_ofs1 = coord_mode_offset !coord_mode in
+    let coord_delta = Gg.V2.sub coord_ofs1 coord_ofs0 in
+    let (x_ofs, y_ofs) = Gg.V2.to_tuple coord_delta in
+      with_cnc @@ fun cnc ->
+	Cnc.wait cnc (Cnc.set_feed_rate 100.0);
+	Cnc.wait cnc Cnc.set_relative;
+	Cnc.ignore cnc (Cnc.travel [`X x_ofs; `Y y_ofs])
+  in
   object 
     method get_position =
       Gg.V2.sub (Gg.V2.v !cnc_x !cnc_y) (coord_mode_offset !coord_mode)
@@ -62,13 +73,9 @@ let view ~packing cnc () =
 
     method get_coord_mode = !coord_mode
     method set_coord_mode coord_mode' =
-      let coord_ofs0 = coord_mode_offset !coord_mode in
-      let coord_ofs1 = coord_mode_offset coord_mode' in
-      let coord_delta = Gg.V2.sub coord_ofs1 coord_ofs0 in
-      let (x_ofs, y_ofs) = Gg.V2.to_tuple coord_delta in
-      coord_mode := coord_mode';
-      with_cnc @@ fun cnc ->
-	Cnc.wait cnc (Cnc.set_feed_rate 100.0);
-	Cnc.wait cnc Cnc.set_relative;
-	Cnc.ignore cnc (Cnc.travel [`X x_ofs; `Y y_ofs])
+      adjust_coord_mode @@ fun () ->
+	coord_mode := coord_mode'
+    method set_camera_offset offset =
+      adjust_coord_mode @@ fun () ->
+	camera_offset := offset
   end
