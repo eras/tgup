@@ -46,7 +46,12 @@ let view ~packing cnc () =
   ignore ((GButton.button ~label:"Y-" ~packing:(directionals#attach ~left:1 ~top:2) ())#connect#clicked (move (0) (-1)));
   ignore ((GButton.button ~label:"X+" ~packing:(directionals#attach ~left:2 ~top:1) ())#connect#clicked (move (1) (0)));
   ignore ((GButton.button ~label:"X-" ~packing:(directionals#attach ~left:0 ~top:1) ())#connect#clicked (move (-1) (0)));
-  let handle_tinyg_report (report : Cnc.status_tinyg) = info#set_label (Printf.sprintf "CNC: X%.3f Y%.3f Z%.3f" report.x report.y report.z) in
+  let handle_tinyg_report (report : Cnc.status_tinyg) = 
+    info#set_label (
+      let (x, y) = Gg.V2.to_tuple (Gg.V2.add (Gg.V2.v report.x report.y) (coord_mode_offset !coord_mode)) in
+      Printf.sprintf "CNC: X%.3f Y%.3f Z%.3f" x y report.z
+    )
+  in
   with_cnc (fun cnc ->
     ignore (Hook.hook (Cnc.status_report_tinyg cnc) handle_tinyg_report);
     let status = Cnc.wait cnc Cnc.status_tinyg in
@@ -70,6 +75,7 @@ let view ~packing cnc () =
     method adjust_position xy = move_by (Gg.V2.x xy) (Gg.V2.y xy)
     method position_adjust_callback = position_adjust_callback
 
+    method current_coord_of_position pos = Gg.V2.add pos (coord_mode_offset !coord_mode)
     method get_coord_mode = !coord_mode
     method set_coord_mode coord_mode' =
       adjust_coord_mode @@ fun () ->
