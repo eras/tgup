@@ -266,14 +266,6 @@ let move_tool env cam_xy camera_to_world =
 let save_location var at = 
   var := Some at
 
-let save_location_difference var at0 at1 = 
-  match at0 with
-  | None -> None
-  | Some at0 ->
-    let d = Gg.V3.sub at0 at1 in
-    var := Some d;
-    Some d
-
 let location_label at =
   let open Gg.V3 in
   Printf.sprintf "X:%.3f Y:%.3f Z:%.3f" (x at) (y at) (z at)
@@ -302,9 +294,13 @@ let get_tool_position cnc =
 
 let (@.) f g x = g (f x)
 
-let v2_of_v3 v2 =
+let v2_of_v3 v3 =
+  let open Gg.V3 in
+  Gg.V2.v (x v3) (y v3)
+
+let v3_of_v2 v3 =
   let open Gg.V2 in
-  Gg.V3.v (x v2) (y v2) 0.0
+  Gg.V3.v (x v3) (y v3) 0.0
 
 let v2_of_status_tinyg status = Cnc.(Gg.V2.v status.x status.y)
 
@@ -470,7 +466,7 @@ let gcode_loader ~packing ~callback ?gcode_filename () =
 (* The need of this function probably is indicative of a bug in LablGTK2? *)
 let cast_button_signal_as_widget_signal (x : ([`button], unit -> unit) GtkSignal.t) : (Gtk.widget, unit -> unit) GtkSignal.t = Obj.magic x
 
-let gui sigint_triggered config camera_matrix_arg tool_camera_offset gcode_filename =
+let gui sigint_triggered config camera_matrix_arg (tool_camera_offset : Gg.V2.t option) gcode_filename =
   let accel_group = GtkData.AccelGroup.create () in
   let video = 
     try new Video.v4l2 
@@ -501,19 +497,17 @@ let gui sigint_triggered config camera_matrix_arg tool_camera_offset gcode_filen
   let cnc_control = CncControl.view ~packing:(control_box#pack) cnc () in
   let info = GMisc.label ~packing:control_box#pack () in
   let int_of_coord_mode = function
-  | `CoordModeTool -> 0
-  | `CoordModeCamera -> 1
+  | CncControl.CoordModeTool -> 0
+  | CncControl.CoordModeCamera -> 1
   in
   let coord_mode_of_int = function
-  | 0 -> `CoordModeTool
-  | 1 -> `CoordModeCamera
+  | 0 -> CncControl.CoordModeTool
+  | 1 -> CncControl.CoordModeCamera
   | _ -> assert false
   in
-  let current_coord_mode = ref `CoordModeTool in
   let points = ref [] in
   let mark_tool_location = ref None in
-  let tool_camera_offset = ref (Option.map v2_of_v3 tool_camera_offset) in
-  let (coord_mode_selection, _) = GEdit.combo_box_text ~strings:["Tool mode"; "Camera mode"] ~active:(int_of_coord_mode !current_coord_mode) ~packing:control_box#pack () in
+  let (coord_mode_selection, _) = GEdit.combo_box_text ~strings:["Tool mode"; "Camera mode"] ~active:(int_of_coord_mode cnc_control#get_coord_mode) ~packing:control_box#pack () in
   let point_mapping = ref Gg.M3.id in
   let gcode = ref None in
   let env = object
@@ -529,32 +523,20 @@ let gui sigint_triggered config camera_matrix_arg tool_camera_offset gcode_filen
     method gcode_to_tool    = gcode_to_tool
   end in
   let set_coord_mode coord_mode =
-    ( match !current_coord_mode, coord_mode, !tool_camera_offset with 
-    | `CoordModeTool, `CoordModeCamera, Some offset ->
-      current_coord_mode := `CoordModeCamera;
-      let offset' = Gg.V3.neg offset in
-      env#cnc_control#adjust_position (Gg.V2.v (Gg.V3.x offset') (Gg.V3.y offset'))
-    | `CoordModeCamera, `CoordModeTool, Some offset ->
-      current_coord_mode := `CoordModeTool;
-      env#cnc_control#adjust_position (Gg.V2.v (Gg.V3.x offset) (Gg.V3.y offset))
-    | _ -> 
-      () );
-    coord_mode_selection#set_active (int_of_coord_mode !current_coord_mode)
+    cnc_control#set_coord_mode coord_mode;
+    coord_mode_selection#set_active (int_of_coord_mode cnc_control#get_coord_mode)
   in
   ignore (coord_mode_selection#connect#changed (fun () ->
     set_coord_mode (coord_mode_of_int coord_mode_selection#active)
   ));
   let _ = mark_location_widget ~label:"Mark" ~tooltip:"Mark the current position of drill" cnc (tap (save_location mark_tool_location) @. location_label) ~packing:control_box#pack in
-  let set_camera_offset at =
-    match save_location_difference tool_camera_offset !mark_tool_location at with
+  let set_camera_offset camera_at =
+    match !mark_tool_location with
     | None -> ""
-    | Some ofs ->
-      ( match !current_coord_mode with
-      | `CoordModeTool ->
-	current_coord_mode := `CoordModeCamera;
-	coord_mode_selection#set_active (int_of_coord_mode !current_coord_mode)
-      | _ -> () );
-      location_label ofs
+    | Some tool_at ->
+      let offset = (Gg.V3.sub camera_at tool_at) in
+      cnc_control#set_camera_offset (v2_of_v3 offset);
+      location_label offset
   in
   let _ = mark_location_widget ~label:"Camera\noffset" ~tooltip:"Measure distance between camera and drill mark" cnc set_camera_offset ~packing:control_box#pack in
   let _ = 
