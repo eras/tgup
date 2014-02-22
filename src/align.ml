@@ -182,6 +182,15 @@ let for_float_range x0 x_step x1 f =
 
 let render_grid cairo world_to_camera (x0, x1, y0, y1) =
   let open Cairo in
+  select_font_face cairo "Georgia" ~weight:Bold;
+  set_font_size cairo 20.0;
+  let text_angle = angle_of_matrix world_to_camera in
+  let _ =
+    let m = LiveView.m3_of_cairo_matrix (get_font_matrix cairo) in
+    let ( *| ) = Gg.M3.mul in
+    let m' = Gg.M3.scale2 (Gg.V2.v 1.0 ~-.1.0) *| m in
+    set_font_matrix cairo (LiveView.cairo_matrix_of_m3 m')
+  in
   let camera_to_world = Gg.M3.inv world_to_camera in
   let map x y = 
     let xy = Gg.V2.v x y in
@@ -206,12 +215,22 @@ let render_grid cairo world_to_camera (x0, x1, y0, y1) =
   let align f = f -. mod_float f density in
   for_float_range (align (x0 -. density)) density (align (x1 +. density))
     (fun x ->
+      save cairo;
+      mapped (move_to cairo) ~x ~y:(y0 +. 1.0);
+      rotate cairo text_angle;
+      Printf.ksprintf (show_text cairo) "% 3.0f" x;
+      restore cairo;
       mapped (move_to cairo) ~x ~y:y0;
       mapped (line_to cairo) ~x ~y:y1;
       stroke cairo;
     );
   for_float_range (align (y0 -. density)) density (align (y1 +. density))
     (fun y ->
+      save cairo;
+      mapped (move_to cairo) ~x:(x0 +. 1.0) ~y;
+      rotate cairo text_angle;
+      Printf.ksprintf (show_text cairo) "% 3.0f" y;
+      restore cairo;
       mapped (move_to cairo) ~x:x0 ~y;
       mapped (line_to cairo) ~x:x1 ~y;
       stroke cairo;
