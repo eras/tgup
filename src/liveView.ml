@@ -139,7 +139,8 @@ let view (width, height) ?(angle=0.0) ?packing () =
       inverse_transformation_matrix := Some (Gg.M3.inv m_overlay);
 
       set_matrix cr (cairo_matrix_of_m3 m_overlay);
-      let bounds' = bounds m_overlay (~-.im_width /. 2.0, ~-.im_height /. 2.0) (im_width /. 2.0, im_height /. 2.0) in
+
+      let bounds' = bounds (M3.inv m) (0.0, 0.0) (area_width, area_height) in
       let context = object
 	  method cairo = cr
 	  method bounds = bounds'
