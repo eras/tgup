@@ -34,31 +34,6 @@ let image_of_rgb (width, height) rgb_data =
   done;
   image
 
-let cairo_matrix_of_m3 m = 
-  let open Cairo in
-  let open Gg.M3 in
-  {
-    xx = e00 m;
-    xy = e01 m;
-    x0 = e02 m;
-    yx = e10 m;
-    yy = e11 m;
-    y0 = e12 m;
-  }
-
-let m3_of_cairo_matrix m = 
-  let open Cairo in
-  Gg.M3.v
-    m.xx
-    m.xy
-    m.x0
-    m.yx
-    m.yy
-    m.y0
-    0.0
-    0.0
-    1.0
-
 let bounds m (x0, y0) (x1, y1) =
   let open Gg in
   let points =
@@ -138,7 +113,7 @@ let view (width, height) ?(angle=0.0) ?packing () =
       let m = fit m (area_width, area_height) (im_width, im_height) in
       let m = center m (area_width, area_height) (im_width, im_height) in
 
-      set_matrix cr (cairo_matrix_of_m3 m);
+      set_matrix cr (Utils.Matrix.cairo_matrix_of_m3 m);
 
       set_source_surface cr image ~x:(~-.im_width /. 2.0) ~y:(~-.im_height /. 2.0);
       rectangle cr (~-.im_width /. 2.0) (im_height /. 2.0) (im_width -. 1.0) (~-.im_height -. 1.0);

@@ -184,10 +184,10 @@ let render_grid cairo world_to_camera (x0, x1, y0, y1) =
   set_font_size cairo 20.0;
   let text_angle = angle_of_matrix world_to_camera in
   let _ =
-    let m = LiveView.m3_of_cairo_matrix (get_font_matrix cairo) in
+    let m = Utils.Matrix.m3_of_cairo_matrix (get_font_matrix cairo) in
     let open Utils.Matrix in
     let m' = Gg.M3.scale2 (Gg.V2.v 1.0 ~-.1.0) *| m in
-    set_font_matrix cairo (LiveView.cairo_matrix_of_m3 m')
+    set_font_matrix cairo (Utils.Matrix.cairo_matrix_of_m3 m')
   in
   let camera_to_world = Gg.M3.inv world_to_camera in
   let map x y = 
