@@ -253,7 +253,8 @@ let draw_overlay env liveview_context =
   | Some camera_to_world ->
     let world_to_camera = Gg.M3.inv camera_to_world in
     let ( *| ) = Gg.M3.mul in
-    render_grid cairo (!(env#point_mapping) *| world_to_camera) liveview_context#bounds;
+    let ( *|| ) a b = Gg.M3.mul b a in
+    render_grid cairo (Gg.M3.move (Gg.V2.neg env#cnc_control#get_position) *|| world_to_camera) liveview_context#bounds;
     let gcode_to_cnc = Option.default Gg.M3.id !(env#gcode_to_cnc) in
     let matrix = !(env#point_mapping) *| (gcode_to_cnc *| world_to_camera) in
     Option.may (render_gcode cairo matrix) !(env#gcode)
