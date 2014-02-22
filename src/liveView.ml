@@ -46,6 +46,19 @@ let cairo_matrix_of_m3 m =
     y0 = e12 m;
   }
 
+let m3_of_cairo_matrix m = 
+  let open Cairo in
+  Gg.M3.v
+    m.xx
+    m.xy
+    m.x0
+    m.yx
+    m.yy
+    m.y0
+    0.0
+    0.0
+    1.0
+
 let bounds m (x0, y0) (x1, y1) =
   let open Gg in
   let points =

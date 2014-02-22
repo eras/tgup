@@ -434,7 +434,11 @@ let gcode_loader ~packing ~callback ?gcode_filename () =
   );
   ignore (Hook.hook widget#gcode_loaded callback)
 
+(* The need of this function probably is indicative of a bug in LablGTK2? *)
+let cast_button_signal_as_widget_signal (x : ([`button], unit -> unit) GtkSignal.t) : (Gtk.widget, unit -> unit) GtkSignal.t = Obj.magic x
+
 let gui sigint_triggered config camera_matrix_arg cnc_camera_offset gcode_filename =
+  let accel_group = GtkData.AccelGroup.create () in
   let video = 
     try new Video.v4l2 
     with exn ->
@@ -446,7 +450,9 @@ let gui sigint_triggered config camera_matrix_arg cnc_camera_offset gcode_filena
   ignore (main_window#connect#destroy ~callback:destroy);
   ignore (sigint_triggered#add_persistent_callback (fun () -> destroy ()));
   let vbox = GPack.vbox ~packing:main_window#add () in
+  main_window#add_accel_group accel_group;
   let quit_button = GButton.button ~label:"Quit" ~packing:(vbox#pack ~expand:false) () in
+  let a = quit_button#misc#add_accelerator ~sgn:(cast_button_signal_as_widget_signal GtkButtonProps.Button.S.activate) ~group:accel_group ~modi:[`CONTROL] GdkKeysyms._q in
   let _ = GMisc.separator `HORIZONTAL ~packing:(vbox#pack ~fill:true ~padding:5) () in
   let hbox = GPack.hbox ~packing:vbox#add () in
   ignore (quit_button#connect#clicked ~callback:destroy);
