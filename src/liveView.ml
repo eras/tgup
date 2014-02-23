@@ -91,6 +91,7 @@ let view (width, height) ?(angle=0.0) ?packing () =
   let inverse_transformation_matrix = ref None in
   let overlay = Hook.create () in
   let angle = ref angle in
+  let scale' = ref 1.0 in
   let draw cr area_width area_height =
     let open Cairo in
     let r = 0.25 *. area_width in
@@ -112,6 +113,7 @@ let view (width, height) ?(angle=0.0) ?packing () =
       let m = M3.rot (-. !angle) *|| m in
       let m = fit m (area_width, area_height) (im_width, im_height) in
       let m = center m (area_width, area_height) (im_width, im_height) in
+      let m = M3.scale2 (Gg.V2.v !scale' !scale') *|| m in
 
       set_matrix cr (Utils.Matrix.cairo_matrix_of_m3 m);
 
@@ -150,6 +152,8 @@ let view (width, height) ?(angle=0.0) ?packing () =
     method on_mouse_move = on_mouse_move
     method overlay = overlay
     method set_angle a = angle := a
+    method get_scale = !scale'
+    method set_scale s = scale' := s
   end in
   let button_pressed ev =
     ( match !inverse_transformation_matrix with
@@ -174,11 +178,23 @@ let view (width, height) ?(angle=0.0) ?packing () =
     );
     true
   in
+  let mouse_scroll ev =
+    let _ =
+      scale' := !scale' *.
+	match GdkEvent.Scroll.direction ev with
+	| `UP -> 1.5
+	| `DOWN -> 1.0 /. 1.5
+	| _ -> 1.0
+    in
+    true
+  in
   ignore (drawing_area#event#connect#expose expose);
   drawing_area#event#add [`EXPOSURE];
   ignore (drawing_area#event#connect#button_press button_pressed);
   ignore (drawing_area#event#connect#motion_notify mouse_moved);
+  ignore (drawing_area#event#connect#scroll mouse_scroll);
   drawing_area#event#add [`BUTTON_PRESS];
+  drawing_area#event#add [`SCROLL];
   drawing_area#event#add [`POINTER_MOTION];
   drawing_area#misc#draw None;
   interface
