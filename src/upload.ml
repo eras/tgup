@@ -49,7 +49,6 @@ let receiver (ts : (_) tinyg_session) =
   let write_queue = Queue.create () in
   let buf = String.create 1024 in
   let lb = LineBuffer.create () in
-  let last_linenumber = ref 0 in
   let enable_send = ref true in
   let rec flush_queue () =
     if !enable_send && not !queue_full && not (Queue.is_empty command_queue) then
