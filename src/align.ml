@@ -268,7 +268,7 @@ let draw_overlay env liveview_context =
   | Some camera_to_world ->
     let world_to_camera = Gg.M3.inv camera_to_world in
     let open Utils.Matrix in
-    let tool_mapping = Gg.M3.move (Gg.V2.neg env#cnc_control#get_position) in
+    let tool_mapping = Gg.M3.move (Gg.V2.neg env#cnc_control#get_viewport_position) in
     render_grid cairo (tool_mapping *|| world_to_camera) liveview_context#bounds;
     let matrix = world_to_camera *| tool_mapping *| !(env#gcode_to_tool) in
     Option.may (render_gcode cairo matrix) !(env#gcode)
@@ -379,8 +379,8 @@ let alignment_widget ~cnc_control ~packing gcode_to_tool_var =
     in
     results#set_text text
   in
-  let mark_callback cur_mark v =
-    cur_mark := Some (v, cnc_control#get_position);
+  let mark_callback cur_mark reference =
+    cur_mark := Some (reference, cnc_control#get_position);
     match !mark1, !mark2 with
     | Some (gcode1, tool1), None ->
       let gcode_to_tool = coordinate_translation tool1 gcode1 in
@@ -505,6 +505,7 @@ let gui sigint_triggered config camera_matrix_arg (tool_camera_offset : Gg.V2.t 
   in
   let control_box = GPack.vbox ~packing:(hbox#pack ~expand:false ~padding:5) () in
   let cnc_control = CncControl.view ~packing:(control_box#pack) cnc () in
+  Option.may cnc_control#set_camera_offset tool_camera_offset;
   let info = GMisc.label ~packing:control_box#pack () in
   let int_of_coord_mode = function
   | CncControl.CoordModeTool -> 0

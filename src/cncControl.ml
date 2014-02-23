@@ -48,7 +48,7 @@ let view ~packing cnc () =
   ignore ((GButton.button ~label:"X-" ~packing:(directionals#attach ~left:0 ~top:1) ())#connect#clicked (move (-1) (0)));
   let handle_tinyg_report (report : Cnc.status_tinyg) = 
     info#set_label (
-      let (x, y) = Gg.V2.to_tuple (Gg.V2.add (Gg.V2.v report.x report.y) (coord_mode_offset !coord_mode)) in
+      let (x, y) = Gg.V2.to_tuple (Gg.V2.sub (Gg.V2.v report.x report.y) (coord_mode_offset !coord_mode)) in
       Printf.sprintf "CNC: X%.3f Y%.3f Z%.3f" x y report.z
     )
   in
@@ -63,7 +63,7 @@ let view ~packing cnc () =
     let coord_ofs0 = coord_mode_offset !coord_mode in
     f ();
     let coord_ofs1 = coord_mode_offset !coord_mode in
-    let coord_delta = Gg.V2.sub coord_ofs0 coord_ofs1 in
+    let coord_delta = Gg.V2.sub coord_ofs1 coord_ofs0 in
     let (x_ofs, y_ofs) = Gg.V2.to_tuple coord_delta in
       with_cnc @@ fun cnc ->
 	Cnc.wait cnc (Cnc.set_feed_rate 100.0);
@@ -71,7 +71,8 @@ let view ~packing cnc () =
 	Cnc.ignore cnc (Cnc.travel [`X x_ofs; `Y y_ofs])
   in
   object 
-    method get_position = Gg.V2.add (Gg.V2.v !cnc_x !cnc_y) (coord_mode_offset !coord_mode)
+    method get_position = Gg.V2.v !cnc_x !cnc_y
+    method get_viewport_position = Gg.V2.sub (Gg.V2.v !cnc_x !cnc_y) (coord_mode_offset !coord_mode)
     method adjust_position xy = move_by (Gg.V2.x xy) (Gg.V2.y xy)
     method position_adjust_callback = position_adjust_callback
 
