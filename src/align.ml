@@ -555,7 +555,7 @@ let gui sigint_triggered config camera_matrix_arg (tool_camera_offset : Gg.V2.t 
     Printf.printf "Loaded %d instructions\n%!" (List.length contents);
     gcode := Some contents
   in
-  let _ = gcode_loader ~packing:control_box#pack ~callback:set_gcode ?gcode_filename () in
+  gcode_loader ~packing:control_box#pack ~callback:set_gcode ?gcode_filename ();
   ignore (Hook.hook liveview#on_mouse_move (show_location env));
   image_updater env ();
   main_window#show ();
