@@ -269,7 +269,7 @@ let upload sigint_triggered common_options file start_from_line =
 	  (fun input ->
 	    let open Gcode.Parser in
 	    match input with
-	    | Move ((G0 | G1), at, _) when Gcode.Parser.AxisMap.mem `Z at && Gcode.Parser.AxisMap.find `Z at > 0.0 ->
+	    | Move { move_reg = (G0 | G1); move_pos = at } when Gcode.Parser.AxisMap.mem `Z at && Gcode.Parser.AxisMap.find `Z at > 0.0 ->
 	      last_line_with_positive_z := Some linenumber
 	    | _ -> ()
 	  ) fragments;
