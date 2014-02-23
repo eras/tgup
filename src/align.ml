@@ -334,7 +334,7 @@ let coordinate_transformation ~scaled (src1, src2) (dst1, dst2) =
   in
   src_to_dst_matrix
 
-let alignment_widget ~cnc ~packing gcode_to_tool_var =
+let alignment_widget ~cnc_control ~packing gcode_to_tool_var =
   let tooltips = GData.tooltips () in
   let frame = GBin.frame ~packing ~label:"G-code realignment" ~label_xalign:0.5 () in
   let vbox = GPack.vbox ~packing:frame#add () in
@@ -379,7 +379,7 @@ let alignment_widget ~cnc ~packing gcode_to_tool_var =
     results#set_text text
   in
   let mark_callback cur_mark v =
-    cur_mark := Some (v, v2_of_status_tinyg @@ Cnc.wait cnc Cnc.status_tinyg);
+    cur_mark := Some (v, cnc_control#get_position);
     match !mark1, !mark2 with
     | Some (gcode1, tool1), None ->
       let gcode_to_tool = coordinate_translation tool1 gcode1 in
@@ -539,11 +539,7 @@ let gui sigint_triggered config camera_matrix_arg (tool_camera_offset : Gg.V2.t 
       location_label offset
   in
   let _ = mark_location_widget ~label:"Camera\noffset" ~tooltip:"Measure distance between camera and drill mark" cnc_control set_camera_offset ~packing:control_box#pack in
-  let _ = 
-    match cnc with
-    | None -> ()
-    | Some cnc -> alignment_widget ~cnc ~packing:control_box#pack env#gcode_to_tool
-  in
+  alignment_widget ~cnc_control ~packing:control_box#pack env#gcode_to_tool;
   ignore (Hook.hook liveview#overlay (draw_overlay env));
   ignore (Hook.hook cnc_control#position_adjust_callback (tool_moved env));
   tool_moved env cnc_control#get_position;
