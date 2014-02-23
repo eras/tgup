@@ -270,8 +270,7 @@ let draw_overlay env liveview_context =
     let open Utils.Matrix in
     let tool_mapping = Gg.M3.move (Gg.V2.neg env#cnc_control#get_position) in
     render_grid cairo (tool_mapping *|| world_to_camera) liveview_context#bounds;
-    let gcode_to_tool = (Option.default Gg.M3.id !(env#gcode_to_tool)) in
-    let matrix = world_to_camera *| tool_mapping *| gcode_to_tool in
+    let matrix = world_to_camera *| tool_mapping *| !(env#gcode_to_tool) in
     Option.may (render_gcode cairo matrix) !(env#gcode)
 
 let move_tool env cam_xy camera_to_world =
@@ -366,7 +365,7 @@ let alignment_widget ~cnc_control ~packing gcode_to_tool_var =
   let mark1 = ref None in
   let mark2 = ref None in
   let set_matrix gcode_to_tool =
-    gcode_to_tool_var := Some gcode_to_tool;
+    gcode_to_tool_var := gcode_to_tool;
     let text = 
       let open Gg in
       let angle = angle_of_matrix gcode_to_tool in
@@ -522,7 +521,7 @@ let gui sigint_triggered config camera_matrix_arg (tool_camera_offset : Gg.V2.t 
   let point_mapping = ref Gg.M3.id in
   let gcode = ref None in
   let env = object
-    val gcode_to_tool = ref None
+    val gcode_to_tool = ref Gg.M3.id
     method points	   = points
     method point_mapping   = point_mapping
     method liveview	   = liveview
@@ -567,9 +566,9 @@ let gui sigint_triggered config camera_matrix_arg (tool_camera_offset : Gg.V2.t 
   gcode_loader ~packing:control_box#pack ~callback:set_gcode ?gcode_filename ();
   let _ =
     let callback () =
-      match !(env#gcode), !(env#gcode_to_tool) with
-      | Some gcode, Some gcode_to_tool ->
-	gcode_transform gcode gcode_to_tool "transformed.gcode"
+      match !(env#gcode) with
+      | Some gcode ->
+	gcode_transform gcode !(env#gcode_to_tool) "transformed.gcode"
       | _ -> ()
     in
     gcode_transformer ~packing:control_box#pack ~callback ();
