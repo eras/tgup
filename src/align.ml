@@ -163,7 +163,8 @@ let render_gcode cairo mapping_matrix (gcode : Gcode.Parser.word list) =
     | command::rest ->
       let state =
 	match command with
-	| Move ((G0 | G1), position, _) ->
+	| Move { move_reg = (G0 | G1); move_pos = position }
+	| ArcCenter { arc_reg = (G2 | G3); arc_pos = position } ->
 	  ( let _prev = state.at in
 	    let state = { State.at = State.complete_at state.at position } in
 	    match state.at with
