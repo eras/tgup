@@ -98,6 +98,10 @@ let load_gcode_file =
   let doc = "G-code file to load" in
   Arg.(value & opt (some file) None & info ["load"] ~doc)
 
+let video_device = 
+  let doc = "Set video device to use." in
+  Arg.(value & opt string "/dev/video0" & info ["video"] ~doc)
+
 let default_prompt = 
   let doc = "A standalone G-code uploader for TinyG" in 
   let man = help_subcommands in
@@ -109,7 +113,7 @@ let cmd_upload sigint_triggered =
   Term.info "upload" ~version
 
 let cmd_align sigint_triggered = 
-  Term.(pure (Align.align sigint_triggered) $ common_opts_t $ camera_matrix $ camera_offset $ load_gcode_file),
+  Term.(pure (Align.align sigint_triggered) $ common_opts_t $ camera_matrix $ camera_offset $ load_gcode_file $ video_device),
   Term.info "align" ~version
 
 let sigint_triggered = new Future.t

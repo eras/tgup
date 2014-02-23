@@ -466,10 +466,10 @@ let gcode_loader ~packing ~callback ?gcode_filename () =
 (* The need of this function probably is indicative of a bug in LablGTK2? *)
 let cast_button_signal_as_widget_signal (x : ([`button], unit -> unit) GtkSignal.t) : (Gtk.widget, unit -> unit) GtkSignal.t = Obj.magic x
 
-let gui sigint_triggered config camera_matrix_arg (tool_camera_offset : Gg.V2.t option) gcode_filename =
+let gui sigint_triggered config camera_matrix_arg (tool_camera_offset : Gg.V2.t option) gcode_filename video_device =
   let accel_group = GtkData.AccelGroup.create () in
   let video = 
-    try new Video.v4l2 
+    try new Video.v4l2 video_device
     with exn ->
       Printf.printf "Trouble opening video (%s), not using it\n%!" (Printexc.to_string exn);
       new Video.null

@@ -5,8 +5,8 @@ class type video = object
     method stop : unit -> unit
 end
 
-class v4l2 : video = object
-    val v4l2 = V4l2.init "/dev/video0" { width = 640; height = 480 } 
+class v4l2 device : video = object
+    val v4l2 = V4l2.init device { width = 640; height = 480 } 
     method get_fd = V4l2.get_fd v4l2
     method get_frame = V4l2.get_frame v4l2
     method start () = V4l2.start v4l2
