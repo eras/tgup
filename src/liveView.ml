@@ -161,7 +161,6 @@ let view (width, height) ?(angle=0.0) ?packing () =
     | Some matrix ->
       let (x, y) = (GdkEvent.Button.x ev, GdkEvent.Button.y ev) in
       let xy = Gg.P2.tr matrix (Gg.V2.v x y) in
-      Printf.printf "Pressed at %s\n%!" (Gg.V2.to_string xy);
       ignore (Hook.issue on_button_press xy);
       ()
     );
