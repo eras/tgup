@@ -3,6 +3,8 @@ open Gtk
 
 let pi2 = 8. *. atan 1.
 
+let verbose = false
+
 let destroy () =
   GMain.Main.quit ()
 
@@ -48,19 +50,19 @@ let add_calibration_point env (cam_xy, tool_xy) =
     let (xy2, tool_xy2) = List.hd (List.rev !(env#points)) in
     let dcam_xy = V2.sub xy2 xy1 in
     let dtool_xy = V2.sub tool_xy1 tool_xy2 in (* consider cnc movement to the opposing direction negative *)
-    Printf.printf "image point: (%f,%f)\n" (V2.x dcam_xy) (V2.y dcam_xy);
-    Printf.printf "tool point: (%f,%f)\n" (V2.x dtool_xy) (V2.y dtool_xy);
+    if verbose then Printf.printf "image point: (%f,%f)\n" (V2.x dcam_xy) (V2.y dcam_xy);
+    if verbose then Printf.printf "tool point: (%f,%f)\n" (V2.x dtool_xy) (V2.y dtool_xy);
     let angle = V2.angle dtool_xy -. V2.angle dcam_xy in
-    Printf.printf "Angle: %f\n%!" (angle /. pi2 *. 360.0);
+    if verbose then Printf.printf "Angle: %f\n%!" (angle /. pi2 *. 360.0);
     let scale' = V2.norm dtool_xy /. V2.norm dcam_xy in
-    Printf.printf "Scale: %f\n%!" scale';
+    if verbose then Printf.printf "Scale: %f\n%!" scale';
 
     let open M3 in
     let m = id in
     let m = mul m (rot angle) in
     let m = mul m (scale2 (V2.v scale' scale')) in
     env#liveview#set_angle (angle_of_matrix m);
-    Printf.printf "camera_to_world: %s\n%!" (M3.to_string m);
+    if verbose then Printf.printf "camera_to_world: %s\n%!" (M3.to_string m);
     env#camera_to_world := Some m;
   | _ -> ()
   )
@@ -102,7 +104,7 @@ let image_updater env =
 	    let rgb = frame#rgb_ba in
 	    let now = Unix.gettimeofday () in
 	    incr frames;
-	    Printf.printf "%d %.2f  \r%!" !frames (float !frames /. (now -. t0));
+	    if verbose then Printf.printf "%d %.2f  \r%!" !frames (float !frames /. (now -. t0));
 	    env#liveview#set_image ((640, 480), rgb);
 	    wait_io ();
 	    false 
@@ -118,13 +120,13 @@ let tool_moved env xy_delta =
   | Some camera_to_world ->
     let open Utils.Matrix in
     let world_to_camera = M3.inv camera_to_world in
-    Printf.printf "Moved by %f, %f\n%!" (V2.x xy_delta) (V2.y xy_delta);
+    if verbose then Printf.printf "Moved by %f, %f\n%!" (V2.x xy_delta) (V2.y xy_delta);
     let tool_movement = M3.move (V2.neg xy_delta) in
-    Printf.printf "Matrix: %s\n%!" (M3.to_string tool_movement);
-    Printf.printf "Translation of 0.0: %s\n%!" (M3.to_string tool_movement);
+    if verbose then Printf.printf "Matrix: %s\n%!" (M3.to_string tool_movement);
+    if verbose then Printf.printf "Translation of 0.0: %s\n%!" (M3.to_string tool_movement);
     let orig = camera_to_world *| !(env#point_mapping) in
     env#point_mapping := world_to_camera *| ((M3.scale2 @@ V2.v 1.0 1.0) *|| tool_movement) *| orig;
-    Printf.printf "Point mapping: %s\n%!" (M3.to_string !(env#point_mapping))
+    if verbose then Printf.printf "Point mapping: %s\n%!" (M3.to_string !(env#point_mapping))
 
 let render_gcode cairo mapping_matrix (gcode : Gcode.Parser.word list) =
   let open Cairo in
@@ -544,7 +546,7 @@ let gui sigint_triggered config camera_matrix_arg (tool_camera_offset : Gg.V2.t 
   ignore (Hook.hook cnc_control#position_adjust_callback (tool_moved env));
   tool_moved env cnc_control#get_position;
   ignore (Hook.hook liveview#on_button_press (fun cam_xy ->
-    Printf.printf "Clicked at %s\n%!" (Gg.V2.to_string cam_xy);
+    if verbose then Printf.printf "Clicked at %s\n%!" (Gg.V2.to_string cam_xy);
     match !camera_to_world with
     | None -> add_calibration_point env (cam_xy, cnc_control#get_position);
     | Some camera_to_world-> move_tool env cam_xy camera_to_world
