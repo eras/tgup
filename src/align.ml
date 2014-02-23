@@ -24,6 +24,8 @@ let scale_of_matrix m3 =
   let vec = V2.v 1.0 1.0 in
   V2.norm (V2.tr m3 vec) /. V2.norm vec
 
+let length_in_matrix m3 len = Gg.(V2.norm (V2.tr m3 (V2.v len 0.0)))
+
 let translation_of_matrix m3 = Gg.(P2.tr m3 (V2.v 0.0 0.0))
 
 let add_calibration_point env (cam_xy, tool_xy) =
@@ -180,8 +182,9 @@ let for_float_range x0 x_step x1 f =
 
 let render_grid cairo world_to_camera (x0, x1, y0, y1) =
   let open Cairo in
+  let cairo_to_world = (Gg.M3.inv (Utils.Matrix.m3_of_cairo_matrix @@ Cairo.get_matrix cairo)) in
   select_font_face cairo "Georgia" ~weight:Bold;
-  set_font_size cairo 20.0;
+  set_font_size cairo (length_in_matrix cairo_to_world 20.0);
   let text_angle = angle_of_matrix world_to_camera in
   let _ =
     let m = Utils.Matrix.m3_of_cairo_matrix (get_font_matrix cairo) in
