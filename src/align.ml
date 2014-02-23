@@ -380,7 +380,7 @@ let alignment_widget ~cnc_control ~packing gcode_to_tool_var =
     results#set_text text
   in
   let mark_callback cur_mark reference =
-    cur_mark := Some (reference, cnc_control#get_position);
+    cur_mark := Some (reference, cnc_control#get_viewport_position);
     match !mark1, !mark2 with
     | Some (gcode1, tool1), None ->
       let gcode_to_tool = coordinate_translation tool1 gcode1 in
