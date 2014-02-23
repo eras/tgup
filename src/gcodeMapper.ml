@@ -47,7 +47,7 @@ let transform matrix data =
       | Some x, Some y -> Complete { at = Gg.V2.v x y }
   in
   let mapping state = function
-    | Move ((G0 | G1) as command, coords, rest) ->
+    | Move { move_reg = (G0 | G1) as command; move_pos = coords; move_rest = rest; move_feedrate } ->
       ( match complete_state state coords with
       | Partial _ ->
         (* ignore all partial information *)
@@ -56,7 +56,26 @@ let transform matrix data =
       | Complete complete ->
         let (+@) map (k, v) = AxisMap.add k v map in
         let at = Gg.P2.tr matrix complete.at in
-        ([Move (command, AxisMap.empty +@ (`X, Gg.V2.x at) +@ (`Y, Gg.V2.y at), rest)], state)
+        ([Move { move_reg = command; move_pos = AxisMap.empty +@ (`X, Gg.V2.x at) +@ (`Y, Gg.V2.y at); move_rest =  rest; move_feedrate }], state)
+      )
+    | ArcCenter ({ arc_reg = (G2 | G3) as command; arc_pos = coords; arc_rest = rest; arc_feedrate } as arc) ->
+      ( match complete_state state coords with
+      | Partial _ ->
+        (* ignore all partial information *)
+        (* TODO: NOTE! this will also have removed Z transitions! *)
+        ([], state)
+      | Complete complete ->
+        let (+@) map (k, v) = AxisMap.add k v map in
+        let at = Gg.P2.tr matrix complete.at in
+        let arc_offset =
+          match arc.arc_offset with
+          | { ao_i = Some i; ao_j = Some j } ->
+            let ofs = Gg.V2.tr matrix (Gg.V2.v i j) in
+            { ao_i = Some (Gg.V2.x ofs);
+              ao_j = Some (Gg.V2.y ofs) }
+          | _ -> failwith "GCodeMapper.transform: G2/G3 without both I and J is not supported"
+        in
+        ([ArcCenter { arc_reg = command; arc_pos = AxisMap.empty +@ (`X, Gg.V2.x at) +@ (`Y, Gg.V2.y at); arc_offset; arc_rest = rest; arc_feedrate }], state)
       )
     | word -> ([word], state)
   in
