@@ -547,16 +547,12 @@ let gui sigint_triggered config camera_matrix_arg (tool_camera_offset : Gg.V2.t 
   ignore (Hook.hook liveview#overlay (draw_overlay env));
   ignore (Hook.hook cnc_control#position_adjust_callback (tool_moved env));
   tool_moved env cnc_control#get_position;
-  ( match cnc with
-  | None -> ()
-  | Some cnc ->
-    ignore (Hook.hook liveview#on_button_press (fun cam_xy ->
-      Printf.printf "Clicked at %s\n%!" (Gg.V2.to_string cam_xy);
-      match !camera_to_world with
-      | None -> add_calibration_point env (cam_xy, get_tool_position cnc);
-      | Some camera_to_world-> move_tool env cam_xy camera_to_world
-    ))
-  );
+  ignore (Hook.hook liveview#on_button_press (fun cam_xy ->
+    Printf.printf "Clicked at %s\n%!" (Gg.V2.to_string cam_xy);
+    match !camera_to_world with
+    | None -> add_calibration_point env (cam_xy, cnc_control#get_position);
+    | Some camera_to_world-> move_tool env cam_xy camera_to_world
+  ));
   let set_gcode contents = 
     Printf.printf "Loaded %d instructions\n%!" (List.length contents);
     gcode := Some contents
