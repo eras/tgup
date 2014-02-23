@@ -56,7 +56,7 @@ let transform matrix data =
       | Complete complete ->
         let (+@) map (k, v) = AxisMap.add k v map in
         let at = Gg.P2.tr matrix complete.at in
-        ([Move (command, AxisMap.empty +@ (`X, Gg.V2.x at) +@ (`Y, Gg.V2.x at), rest)], state)
+        ([Move (command, AxisMap.empty +@ (`X, Gg.V2.x at) +@ (`Y, Gg.V2.y at), rest)], state)
       )
     | word -> ([word], state)
   in
