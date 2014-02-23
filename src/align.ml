@@ -468,6 +468,15 @@ let gcode_loader ~packing ~callback ?gcode_filename () =
 (* The need of this function probably is indicative of a bug in LablGTK2? *)
 let cast_button_signal_as_widget_signal (x : ([`button], unit -> unit) GtkSignal.t) : (Gtk.widget, unit -> unit) GtkSignal.t = Obj.magic x
 
+let gcode_transform gcode matrix filename =
+  let gcode = GcodeMapper.transform matrix (List.enum gcode) in
+  File.with_file_out filename @@ fun output ->
+    Enum.iter (IO.write_line output) gcode
+
+let gcode_transformer ~packing ~callback () =
+  let save_button = GButton.button ~label:"Save" ~packing () in
+  save_button#connect#clicked ~callback
+
 let gui sigint_triggered config camera_matrix_arg (tool_camera_offset : Gg.V2.t option) gcode_filename video_device =
   let accel_group = GtkData.AccelGroup.create () in
   let video = 
@@ -556,6 +565,15 @@ let gui sigint_triggered config camera_matrix_arg (tool_camera_offset : Gg.V2.t 
     gcode := Some contents
   in
   gcode_loader ~packing:control_box#pack ~callback:set_gcode ?gcode_filename ();
+  let _ =
+    let callback () =
+      match !(env#gcode), !(env#gcode_to_tool) with
+      | Some gcode, Some gcode_to_tool ->
+	gcode_transform gcode gcode_to_tool "transformed.gcode"
+      | _ -> ()
+    in
+    gcode_transformer ~packing:control_box#pack ~callback ();
+  in
   ignore (Hook.hook liveview#on_mouse_move (show_location env));
   image_updater env ();
   main_window#show ();
