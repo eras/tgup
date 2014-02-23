@@ -84,4 +84,6 @@ let view ~packing cnc () =
     method set_camera_offset offset =
       adjust_coord_mode @@ fun () ->
 	camera_offset := offset
+    method get_camera_offset offset = !camera_offset
+    method get_camera_position = Gg.V2.sub (Gg.V2.v !cnc_x !cnc_y) !camera_offset
   end
