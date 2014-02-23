@@ -15,6 +15,18 @@ let ba_of_string str =
   done;
   ba
 
+let (@.) f g x = g (f x)
+
+let v2_of_v3 v3 =
+  let open Gg.V3 in
+  Gg.V2.v (x v3) (y v3)
+
+let v3_of_v2 v3 =
+  let open Gg.V2 in
+  Gg.V3.v (x v3) (y v3) 0.0
+
+let v2_of_status_tinyg status = Cnc.(Gg.V2.v status.x status.y)
+
 let flip_y (a, b) = (a, ~-. b)
 
 let angle_of_matrix m3 = Gg.(V2.angle (V2.tr m3 (V2.v 1.0 0.0)))
@@ -273,7 +285,7 @@ let location_label at =
   let open Gg.V3 in
   Printf.sprintf "X:%.3f Y:%.3f Z:%.3f" (x at) (y at) (z at)
 
-let mark_location_widget ~label ~packing ?tooltip cnc f =
+let mark_location_widget ~label ~packing ?tooltip cnc_control f =
   let tooltips = GData.tooltips () in
   let mark_box = GPack.hbox ~packing () in
   let mark_button = GButton.button ~label ~packing:mark_box#pack () in
@@ -283,29 +295,14 @@ let mark_location_widget ~label ~packing ?tooltip cnc f =
   let mark_label = GMisc.label ~packing:mark_box#pack () in
   mark_label#set_label "Unset";
   let set_mark event =
-    match cnc with
-    | None -> ()
-    | Some cnc ->
-      let status = Cnc.wait cnc Cnc.status_tinyg in
-      mark_label#set_label (f (Gg.V3.v status.x status.y status.z));
+    let location = v3_of_v2 cnc_control#get_position in
+    mark_label#set_label (f location);
   in
   ignore (mark_button#connect#clicked ~callback:set_mark)
 
 let get_tool_position cnc =
   let status = Cnc.wait cnc Cnc.status_tinyg in
   Gg.V2.v status.x status.y
-
-let (@.) f g x = g (f x)
-
-let v2_of_v3 v3 =
-  let open Gg.V3 in
-  Gg.V2.v (x v3) (y v3)
-
-let v3_of_v2 v3 =
-  let open Gg.V2 in
-  Gg.V3.v (x v3) (y v3) 0.0
-
-let v2_of_status_tinyg status = Cnc.(Gg.V2.v status.x status.y)
 
 let coordinate_translation src dst =
   let open Gg in
@@ -532,7 +529,7 @@ let gui sigint_triggered config camera_matrix_arg (tool_camera_offset : Gg.V2.t 
   ignore (coord_mode_selection#connect#changed (fun () ->
     set_coord_mode (coord_mode_of_int coord_mode_selection#active)
   ));
-  let _ = mark_location_widget ~label:"Mark" ~tooltip:"Mark the current position of drill" cnc (tap (save_location mark_tool_location) @. location_label) ~packing:control_box#pack in
+  let _ = mark_location_widget ~label:"Mark" ~tooltip:"Mark the current position of drill" cnc_control (tap (save_location mark_tool_location) @. location_label) ~packing:control_box#pack in
   let set_camera_offset camera_at =
     match !mark_tool_location with
     | None -> ""
@@ -541,7 +538,7 @@ let gui sigint_triggered config camera_matrix_arg (tool_camera_offset : Gg.V2.t 
       cnc_control#set_camera_offset (v2_of_v3 offset);
       location_label offset
   in
-  let _ = mark_location_widget ~label:"Camera\noffset" ~tooltip:"Measure distance between camera and drill mark" cnc set_camera_offset ~packing:control_box#pack in
+  let _ = mark_location_widget ~label:"Camera\noffset" ~tooltip:"Measure distance between camera and drill mark" cnc_control set_camera_offset ~packing:control_box#pack in
   let _ = 
     match cnc with
     | None -> ()
