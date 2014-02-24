@@ -128,59 +128,28 @@ let tool_moved env xy_delta =
     env#point_mapping := world_to_camera *| ((M3.scale2 @@ V2.v 1.0 1.0) *|| tool_movement) *| orig;
     if verbose then Printf.printf "Point mapping: %s\n%!" (M3.to_string !(env#point_mapping))
 
-let render_gcode cairo mapping_matrix (gcode : Gcode.Parser.word list) =
+let render_gcode cairo mapping_matrix (gcode : Gcode.Evaluate.step_result list) =
   let open Cairo in
-  let module State = struct
-    type at = {
-      x : float option;
-      y : float option;
-      z : float option;
-    }
-    type t = {
-      at   : at
-    }
-    let init = {
-      at = { x = None;
-	     y = None;
-	     z = None };
-    }
-
-    let complete_at at position =
-      let module AM = Gcode.Parser.AxisMap in
-      let get key default =
-	try Some (Gcode.Parser.AxisMap.find key position)
-	with Not_found -> default
-      in
-      {
-	x = get `X at.x;
-	y = get `Y at.y;
-	z = get `Z at.z;
-      }
-  end in
   let open Gcode.Parser in
-  let rec loop (state : State.t) = function
+  let rec loop = function
     | [] -> ()
-    | command::rest ->
-      let state =
-	match command with
-	| Move { move_reg = (G0 | G1); move_pos = position }
-	| ArcCenter { arc_reg = (G2 | G3); arc_pos = position } ->
-	  ( let _prev = state.at in
-	    let state = { State.at = State.complete_at state.at position } in
-	    match state.at with
-	    | { x = Some x; y = Some y } ->
-	      let xy = Gg.V2.v x y in
-	      let (x', y') = Gg.(V2.to_tuple @@ P2.tr mapping_matrix xy) in
-	      arc cairo x' y' 10.0 0.0 pi2;
-	      fill cairo;
-	      state
-	    | _ -> state )
-	| _ -> state
+    | step_result::rest ->
+      let _ =
+	let open Gcode.Evaluate in
+	match motion_of_commands step_result.sr_commands with
+	| Some (`G0 | `G1 | `G2 | `G3) ->
+	  let x = AxisMap.find `X step_result.sr_state1.ms_position in
+	  let y = AxisMap.find `Y step_result.sr_state1.ms_position in
+	  let xy = Gg.V2.v x y in
+	  let (x', y') = Gg.(V2.to_tuple @@ P2.tr mapping_matrix xy) in
+	  arc cairo x' y' 10.0 0.0 pi2;
+	  fill cairo
+	| _ -> ()
       in
-      loop state rest
+      loop rest
   in
   set_source_rgba cairo 1.0 0.0 0.0 0.5;
-  loop State.init gcode
+  loop gcode
 
 let minmax (x, y) = (min x y, max x y)
 
@@ -435,7 +404,7 @@ let load_gcode filename =
   let file = open_in filename in
   let gcode = 
     try
-      `Value (List.of_enum (Gcode.Parser.parse_gcode (Lexing.from_channel file)))
+      `Value (List.of_enum (Gcode.Evaluate.evaluate_gcode (Lexing.from_channel file)))
     with exn -> `Exn exn
   in
   close_in file;
@@ -461,7 +430,7 @@ let gcode_loader ~packing ~callback ?gcode_filename () =
   | Some filename -> 
     match load_gcode filename with
     | `Value v -> callback v
-    | `Exn e -> Printf.printf "Cannot load gcode file\n%!"; ()
+    | `Exn e -> Printf.printf "Cannot load gcode file: %s\n%!" (Printexc.to_string e); ()
   );
   ignore (Hook.hook widget#gcode_loaded callback)
 
