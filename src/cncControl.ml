@@ -24,8 +24,10 @@ let view ~packing cnc () =
   let info = GMisc.label ~packing:(vbox#pack ~expand:true) () in
   travel_length#entry#set_text "1.0";
   z_travel_length#entry#set_text "1.0";
-  let cnc_x = ref 0.0  in
+  let cnc_x = ref 0.0 in
   let cnc_y = ref 0.0 in
+  let cnc_z = ref 0.0 in
+  let reference_z = ref 0.0 in          (* virtual zero-level *)
   let position_adjust_callback = Hook.create () in
   let coord_mode = ref CoordModeTool in
   let camera_offset = ref (Gg.V2.v 0.0 0.0) in
@@ -53,15 +55,13 @@ let view ~packing cnc () =
   let move_z z_dir _ =
     let length = float_of_string (z_travel_length#entry#text) in
     let z_ofs = float z_dir *. length in
+    cnc_z := !cnc_z +. z_ofs;
     with_cnc @@ fun cnc ->
       Cnc.wait cnc (Cnc.set_feed_rate 100.0);
       Cnc.wait cnc Cnc.set_relative;
       Cnc.ignore cnc (Cnc.travel [`Z z_ofs])
   in
-  let reset_z _ =
-    with_cnc @@ fun cnc ->
-      Cnc.ignore cnc (Cnc.set_position [`Z 0.0])
-  in
+  let reset_z _ = reference_z := !cnc_z in
   ignore ((GButton.button ~label:"Y+" ~packing:(directionals#attach ~left:1 ~top:0) ())#connect#clicked (move (0) (1)));
   ignore ((GButton.button ~label:"Y-" ~packing:(directionals#attach ~left:1 ~top:2) ())#connect#clicked (move (0) (-1)));
   ignore ((GButton.button ~label:"X+" ~packing:(directionals#attach ~left:2 ~top:1) ())#connect#clicked (move (1) (0)));
@@ -80,6 +80,7 @@ let view ~packing cnc () =
     let status = Cnc.wait cnc Cnc.status_tinyg in
     cnc_x := status.x;
     cnc_y := status.y;
+    cnc_z := status.z;
     handle_tinyg_report status
   );
   let adjust_coord_mode f =
