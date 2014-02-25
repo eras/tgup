@@ -154,8 +154,9 @@ let render_gcode cairo mapping_matrix (gcode : Gcode.Evaluate.step_result list) 
       if Hashtbl.mem drawn key
       then ()
       else (
-	Hashtbl.add drawn key ();
-	f ()
+	let draw = f () in
+	Hashtbl.add drawn key draw;
+	draw ()
       )
   in  
   let rec loop = function
@@ -170,9 +171,10 @@ let render_gcode cairo mapping_matrix (gcode : Gcode.Evaluate.step_result list) 
 	  draw (`G1 (xy0, xy1)) (fun () ->
 	    let (x0, y0) = Gg.V2.to_tuple @@ Gg.P2.tr mapping_matrix xy0 in
 	    let (x1, y1) = Gg.V2.to_tuple @@ Gg.P2.tr mapping_matrix xy1 in
-	    move_to cairo x0 y0;
-	    line_to cairo x1 y1;
-	    stroke cairo
+	    fun () ->
+	      move_to cairo x0 y0;
+	      line_to cairo x1 y1;
+	      stroke cairo
 	  )
 	| Some (`G2) ->
 	  let open Gg in
@@ -188,8 +190,9 @@ let render_gcode cairo mapping_matrix (gcode : Gcode.Evaluate.step_result list) 
 	    let ang1 = V2.angle (V2.sub xy1 center) in
 	    let ang1 = if ang1 < ang0 then ang1 +. Gg.Float.two_pi else ang1 in
 	    let radius = Gg.V2.norm ij in
-	    arc cairo (V2.x center) (V2.y center) radius ang1 ang0;
-	    stroke cairo
+	    fun () ->
+	      arc cairo (V2.x center) (V2.y center) radius ang1 ang0;
+	      stroke cairo
 	  )
 	| _ -> ()
       in
