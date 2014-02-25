@@ -56,4 +56,4 @@ let transform matrix z_offset data =
       sr_state0 = map sr.sr_state0;
       sr_state1 = map sr.sr_state1; }
   in
-  Enum.map string_of_step_result data
+  data

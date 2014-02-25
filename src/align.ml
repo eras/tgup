@@ -489,8 +489,9 @@ let cast_button_signal_as_widget_signal (x : ([`button], unit -> unit) GtkSignal
 
 let gcode_transform gcode matrix z_offset filename =
   let gcode = GcodeMapper.transform matrix z_offset (List.enum gcode) in
+  let strings = Enum.map Gcode.Evaluate.string_of_step_result gcode in
   File.with_file_out filename @@ fun output ->
-    Enum.iter (IO.write_line output) gcode
+    Enum.iter (IO.write_line output) strings
 
 let gcode_transformer ~packing ~callback () =
   let save_button = GButton.button ~label:"Save" ~packing () in
