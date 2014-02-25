@@ -130,20 +130,48 @@ let tool_moved env xy_delta =
 
 let render_gcode cairo mapping_matrix (gcode : Gcode.Evaluate.step_result list) =
   let open Cairo in
-  let open Gcode.Parser in
+  let open Gcode.Evaluate in
+  set_line_width cairo (length_in_matrix mapping_matrix 3.0);
+  set_line_cap cairo ROUND;
+  set_line_join cairo JOIN_ROUND;
+  let raw_coords state x_key y_key =
+    let x = AxisMap.find x_key state.ms_position in
+    let y = AxisMap.find y_key state.ms_position in
+    Gg.V2.v x y
+  in
+  let coords state x_key y_key =
+    let xy = raw_coords state x_key y_key in
+    Gg.P2.tr mapping_matrix xy
+  in
+  let raw_regs state x_key y_key =
+    let x = RegNoAxisMap.find x_key state.ms_regs in
+    let y = RegNoAxisMap.find y_key state.ms_regs in
+    Gg.V2.v x y
+  in
   let rec loop = function
     | [] -> ()
     | step_result::rest ->
       let _ =
 	let open Gcode.Evaluate in
 	match motion_of_commands step_result.sr_commands with
-	| Some (`G0 | `G1 | `G2 | `G3) ->
-	  let x = AxisMap.find `X step_result.sr_state1.ms_position in
-	  let y = AxisMap.find `Y step_result.sr_state1.ms_position in
-	  let xy = Gg.V2.v x y in
-	  let (x', y') = Gg.(V2.to_tuple @@ P2.tr mapping_matrix xy) in
-	  arc cairo x' y' 10.0 0.0 pi2;
-	  fill cairo
+	| Some (`G1) ->
+	  let (x0, y0) = Gg.V2.to_tuple @@ coords step_result.sr_state0 `X `Y in
+	  let (x1, y1) = Gg.V2.to_tuple @@ coords step_result.sr_state1 `X `Y in
+	  move_to cairo x0 y0;
+	  line_to cairo x1 y1;
+	  stroke cairo
+	| Some (`G2) ->
+	  let open Gg in
+	  let xy0 = coords step_result.sr_state0 `X `Y in
+	  let ij = Gg.V2.tr mapping_matrix @@ raw_regs step_result.sr_state1 `I `J in
+	  let center = V2.add xy0 ij in
+	  let xy1 = coords step_result.sr_state1 `X `Y in
+	  let ang0 = V2.angle (V2.sub xy0 center) in
+	  let ang1 = V2.angle (V2.sub xy1 center) in
+	  let ang1 = if ang1 < ang0 then ang1 +. Gg.Float.two_pi else ang1 in
+	  let radius = Gg.V2.norm ij in
+	  arc cairo (V2.x center) (V2.y center) radius ang1 ang0;
+	  stroke cairo
 	| _ -> ()
       in
       loop rest
