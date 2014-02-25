@@ -1,6 +1,8 @@
 [submodule "OCamlGcode"]
 	path = OCamlGcode
 	url = http://github.com/eras/OCamlGcode
+	ignore = dirty
 [submodule "OCamlV4l2"]
 	path = OCamlV4l2
 	url = https://github.com/eras/OCamlV4l2
+	ignore = dirty
