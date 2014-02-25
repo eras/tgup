@@ -148,6 +148,16 @@ let render_gcode cairo mapping_matrix (gcode : Gcode.Evaluate.step_result list) 
     let y = RegNoAxisMap.find y_key state.ms_regs in
     Gg.V2.v x y
   in
+  let draw =
+    let drawn = Hashtbl.create 10240 in
+    fun key f ->
+      if Hashtbl.mem drawn key
+      then ()
+      else (
+	Hashtbl.add drawn key ();
+	f ()
+      )
+  in  
   let rec loop = function
     | [] -> ()
     | step_result::rest ->
@@ -155,28 +165,37 @@ let render_gcode cairo mapping_matrix (gcode : Gcode.Evaluate.step_result list) 
 	let open Gcode.Evaluate in
 	match motion_of_commands step_result.sr_commands with
 	| Some (`G1) ->
-	  let (x0, y0) = Gg.V2.to_tuple @@ coords step_result.sr_state0 `X `Y in
-	  let (x1, y1) = Gg.V2.to_tuple @@ coords step_result.sr_state1 `X `Y in
-	  move_to cairo x0 y0;
-	  line_to cairo x1 y1;
-	  stroke cairo
+	  let xy0 = raw_coords step_result.sr_state0 `X `Y in
+	  let xy1 = raw_coords step_result.sr_state1 `X `Y in
+	  draw (`G1 (xy0, xy1)) (fun () ->
+	    let (x0, y0) = Gg.V2.to_tuple @@ Gg.P2.tr mapping_matrix xy0 in
+	    let (x1, y1) = Gg.V2.to_tuple @@ Gg.P2.tr mapping_matrix xy1 in
+	    move_to cairo x0 y0;
+	    line_to cairo x1 y1;
+	    stroke cairo
+	  )
 	| Some (`G2) ->
 	  let open Gg in
-	  let xy0 = coords step_result.sr_state0 `X `Y in
-	  let ij = Gg.V2.tr mapping_matrix @@ raw_regs step_result.sr_state1 `I `J in
-	  let center = V2.add xy0 ij in
-	  let xy1 = coords step_result.sr_state1 `X `Y in
-	  let ang0 = V2.angle (V2.sub xy0 center) in
-	  let ang1 = V2.angle (V2.sub xy1 center) in
-	  let ang1 = if ang1 < ang0 then ang1 +. Gg.Float.two_pi else ang1 in
-	  let radius = Gg.V2.norm ij in
-	  arc cairo (V2.x center) (V2.y center) radius ang1 ang0;
-	  stroke cairo
+	  let raw_xy0 = raw_coords step_result.sr_state0 `X `Y in
+	  let raw_ij = raw_regs step_result.sr_state1 `I `J in
+	  let raw_xy1 = raw_coords step_result.sr_state1 `X `Y in
+	  draw (`G2 (raw_xy0, raw_ij, raw_xy1)) (fun () ->
+	    let ij = Gg.V2.tr mapping_matrix raw_ij in
+	    let xy0 = Gg.P2.tr mapping_matrix raw_xy0 in
+	    let xy1 = Gg.P2.tr mapping_matrix raw_xy1 in
+	    let center = V2.add xy0 ij in
+	    let ang0 = V2.angle (V2.sub xy0 center) in
+	    let ang1 = V2.angle (V2.sub xy1 center) in
+	    let ang1 = if ang1 < ang0 then ang1 +. Gg.Float.two_pi else ang1 in
+	    let radius = Gg.V2.norm ij in
+	    arc cairo (V2.x center) (V2.y center) radius ang1 ang0;
+	    stroke cairo
+	  )
 	| _ -> ()
       in
       loop rest
   in
-  set_source_rgba cairo 1.0 0.0 0.0 0.5;
+  set_source_rgba cairo 1.0 0.0 0.0 1.0;
   loop gcode
 
 let minmax (x, y) = (min x y, max x y)
