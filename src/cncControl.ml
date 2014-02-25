@@ -38,7 +38,7 @@ let view ~packing cnc () =
   let move_by x_ofs y_ofs =
     cnc_x := !cnc_x +. x_ofs;
     cnc_y := !cnc_y +. y_ofs;
-    Hook.issue position_adjust_callback (Gg.V2.v x_ofs y_ofs);
+    Hook.issue position_adjust_callback (Gg.V3.v x_ofs y_ofs 0.0);
     with_cnc @@ fun cnc ->
       assert (abs_float x_ofs < 5.0);
       assert (abs_float y_ofs < 5.0);
@@ -56,6 +56,7 @@ let view ~packing cnc () =
     let length = float_of_string (z_travel_length#entry#text) in
     let z_ofs = float z_dir *. length in
     cnc_z := !cnc_z +. z_ofs;
+    Hook.issue position_adjust_callback (Gg.V3.v 0.0 0.0 z_ofs);
     with_cnc @@ fun cnc ->
       Cnc.wait cnc (Cnc.set_feed_rate 100.0);
       Cnc.wait cnc Cnc.set_relative;

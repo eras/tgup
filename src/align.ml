@@ -114,14 +114,14 @@ let image_updater env =
     env#video#start ();
     ignore (update_image [])
 
-let tool_moved env xy_delta =
+let tool_moved env xyz_delta =
   match !(env#camera_to_world) with
   | None -> ()
   | Some camera_to_world ->
     let open Utils.Matrix in
     let world_to_camera = M3.inv camera_to_world in
-    if verbose then Printf.printf "Moved by %f, %f\n%!" (V2.x xy_delta) (V2.y xy_delta);
-    let tool_movement = M3.move (V2.neg xy_delta) in
+    if verbose then Printf.printf "Moved by %s\n%!" (V3.to_string xyz_delta);
+    let tool_movement = M3.move (V2.neg @@ v2_of_v3 xyz_delta) in
     if verbose then Printf.printf "Matrix: %s\n%!" (M3.to_string tool_movement);
     if verbose then Printf.printf "Translation of 0.0: %s\n%!" (M3.to_string tool_movement);
     let orig = camera_to_world *| !(env#point_mapping) in
@@ -573,7 +573,7 @@ let gui sigint_triggered config camera_matrix_arg (tool_camera_offset : Gg.V2.t 
   alignment_widget ~cnc_control ~packing:control_box#pack env#gcode_to_tool;
   ignore (Hook.hook liveview#overlay (draw_overlay env));
   ignore (Hook.hook cnc_control#position_adjust_callback (tool_moved env));
-  tool_moved env (v2_of_v3 cnc_control#get_position);
+  tool_moved env cnc_control#get_position;
   ignore (Hook.hook liveview#on_button_press (fun cam_xy ->
     if verbose then Printf.printf "Clicked at %s\n%!" (Gg.V2.to_string cam_xy);
     match !camera_to_world with
