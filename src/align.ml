@@ -316,7 +316,7 @@ let mark_location_widget ~label ~packing ?tooltip cnc_control f =
   let mark_label = GMisc.label ~packing:mark_box#pack () in
   mark_label#set_label "Unset";
   let set_mark event =
-    let location = v3_of_v2 cnc_control#get_position in
+    let location = cnc_control#get_position in
     mark_label#set_label (f location);
   in
   ignore (mark_button#connect#clicked ~callback:set_mark)
@@ -573,11 +573,11 @@ let gui sigint_triggered config camera_matrix_arg (tool_camera_offset : Gg.V2.t 
   alignment_widget ~cnc_control ~packing:control_box#pack env#gcode_to_tool;
   ignore (Hook.hook liveview#overlay (draw_overlay env));
   ignore (Hook.hook cnc_control#position_adjust_callback (tool_moved env));
-  tool_moved env cnc_control#get_position;
+  tool_moved env (v2_of_v3 cnc_control#get_position);
   ignore (Hook.hook liveview#on_button_press (fun cam_xy ->
     if verbose then Printf.printf "Clicked at %s\n%!" (Gg.V2.to_string cam_xy);
     match !camera_to_world with
-    | None -> add_calibration_point env (cam_xy, cnc_control#get_position);
+    | None -> add_calibration_point env (cam_xy, v2_of_v3 cnc_control#get_position);
     | Some camera_to_world-> move_tool env cam_xy camera_to_world
   ));
   let set_gcode contents = 

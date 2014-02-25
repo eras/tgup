@@ -95,7 +95,7 @@ let view ~packing cnc () =
 	Cnc.ignore cnc (Cnc.travel [`X x_ofs; `Y y_ofs])
   in
   object 
-    method get_position = Gg.V2.v !cnc_x !cnc_y
+    method get_position = Gg.V3.v !cnc_x !cnc_y (!cnc_z -. !reference_z)
     method get_viewport_position = Gg.V2.sub (Gg.V2.v !cnc_x !cnc_y) (coord_mode_offset !coord_mode)
     method adjust_position xy = move_by (Gg.V2.x xy) (Gg.V2.y xy)
     method position_adjust_callback = position_adjust_callback
