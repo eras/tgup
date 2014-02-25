@@ -18,9 +18,9 @@ let view ~packing cnc () =
     GPack.table ~packing:frame#add ~columns:5 ~rows:4 () in
   let z_controls_box =
     let frame = GBin.frame ~packing:directionals_hbox#add () in
-    GPack.table ~packing:frame#add ~columns:3 ~rows:3 () in
+    GPack.table ~packing:frame#add ~columns:3 ~rows:4 () in
   let (travel_length, _) = GEdit.combo_box_entry_text ~strings:["0.05"; "0.1"; "1.0"; "10.0"; "20.0"] ~packing:(directionals#attach ~left:0 ~right:3 ~top:3) () in
-  let (z_travel_length, _) = GEdit.combo_box_entry_text ~strings:["0.05"; "0.1"; "1.0"] ~packing:(z_controls_box#attach ~left:0 ~top:2) () in
+  let (z_travel_length, _) = GEdit.combo_box_entry_text ~strings:["0.05"; "0.1"; "1.0"] ~packing:(z_controls_box#attach ~left:0 ~top:3) () in
   let info = GMisc.label ~packing:(vbox#pack ~expand:true) () in
   travel_length#entry#set_text "1.0";
   z_travel_length#entry#set_text "1.0";
@@ -58,12 +58,17 @@ let view ~packing cnc () =
       Cnc.wait cnc Cnc.set_relative;
       Cnc.ignore cnc (Cnc.travel [`Z z_ofs])
   in
+  let reset_z _ =
+    with_cnc @@ fun cnc ->
+      Cnc.ignore cnc (Cnc.set_position [`Z 0.0])
+  in
   ignore ((GButton.button ~label:"Y+" ~packing:(directionals#attach ~left:1 ~top:0) ())#connect#clicked (move (0) (1)));
   ignore ((GButton.button ~label:"Y-" ~packing:(directionals#attach ~left:1 ~top:2) ())#connect#clicked (move (0) (-1)));
   ignore ((GButton.button ~label:"X+" ~packing:(directionals#attach ~left:2 ~top:1) ())#connect#clicked (move (1) (0)));
   ignore ((GButton.button ~label:"X-" ~packing:(directionals#attach ~left:0 ~top:1) ())#connect#clicked (move (-1) (0)));
   ignore ((GButton.button ~label:"Z+" ~packing:(z_controls_box#attach ~left:0 ~top:0) ())#connect#clicked (move_z (1)));
   ignore ((GButton.button ~label:"Z-" ~packing:(z_controls_box#attach ~left:0 ~top:1) ())#connect#clicked (move_z (-1)));
+  ignore ((GButton.button ~label:"Reset Z" ~packing:(z_controls_box#attach ~left:0 ~top:2) ())#connect#clicked reset_z);
   let handle_tinyg_report (report : Cnc.status_tinyg) = 
     info#set_label (
       let (x, y) = Gg.V2.to_tuple (Gg.V2.sub (Gg.V2.v report.x report.y) (coord_mode_offset !coord_mode)) in
