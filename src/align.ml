@@ -487,8 +487,8 @@ let gcode_loader ~packing ~callback ?gcode_filename () =
 (* The need of this function probably is indicative of a bug in LablGTK2? *)
 let cast_button_signal_as_widget_signal (x : ([`button], unit -> unit) GtkSignal.t) : (Gtk.widget, unit -> unit) GtkSignal.t = Obj.magic x
 
-let gcode_transform gcode matrix filename =
-  let gcode = GcodeMapper.transform matrix (List.enum gcode) in
+let gcode_transform gcode matrix z_offset filename =
+  let gcode = GcodeMapper.transform matrix z_offset (List.enum gcode) in
   File.with_file_out filename @@ fun output ->
     Enum.iter (IO.write_line output) gcode
 
@@ -589,7 +589,7 @@ let gui sigint_triggered config camera_matrix_arg (tool_camera_offset : Gg.V2.t 
     let callback () =
       match !(env#gcode) with
       | Some gcode ->
-	gcode_transform gcode !(env#gcode_to_tool) "transformed.gcode"
+	gcode_transform gcode !(env#gcode_to_tool) cnc_control#get_reference_z "transformed.gcode"
       | _ -> ()
     in
     gcode_transformer ~packing:control_box#pack ~callback ();

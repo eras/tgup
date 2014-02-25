@@ -14,7 +14,7 @@ let coalesce2 a b =
     | None -> b
     | Some _ -> a
 
-let transform matrix data =
+let transform matrix z_offset data =
   let open Gcode.Evaluate in
   let map_vector op a b =
     let ab = Gg.V2.v a b in
@@ -23,10 +23,8 @@ let transform matrix data =
     (a', b')
   in
   let map state =
-    let (x', y') =
-      let (!) x = AxisMap.find x state.ms_position in
-      map_vector Gg.P2.tr !`X !`Y
-    in
+    let (!) x = AxisMap.find x state.ms_position in
+    let (x', y') = map_vector Gg.P2.tr !`X !`Y in
     let is_arc = List.mem state.ms_g_motion [`G2; `G3] in
     let ij' =
       let (!) x =
@@ -43,7 +41,7 @@ let transform matrix data =
     { state with
       ms_position =
         (let (++) m (key, value) = AxisMap.add key value m in
-         state.ms_position ++ (`X, x') ++ (`Y, y'));
+         state.ms_position ++ (`X, x') ++ (`Y, y') ++ (`Z, !`Z +. z_offset));
       ms_regs =
         (let (++) m (key, value) =
            match value with

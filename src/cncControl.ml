@@ -101,6 +101,8 @@ let view ~packing cnc () =
     method adjust_position xy = move_by (Gg.V2.x xy) (Gg.V2.y xy)
     method position_adjust_callback = position_adjust_callback
 
+    method get_reference_z = !reference_z
+
     method current_coord_of_position pos = Gg.V2.add pos (coord_mode_offset !coord_mode)
     method get_coord_mode = !coord_mode
     method set_coord_mode coord_mode' =
