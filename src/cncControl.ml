@@ -12,10 +12,18 @@ let view ~packing cnc () =
   in
   let vbox = GPack.vbox ~packing () in
   let directionals_alignment = GBin.alignment ~packing:vbox#pack ~padding:(10, 10, 50, 50) ~xalign:1.0 () in
-  let directionals = GPack.table ~packing:directionals_alignment#add ~columns:3 ~rows:3 () in
-  let (travel_length, _) = GEdit.combo_box_entry_text ~strings:["0.05"; "0.1"; "1.0"; "10.0"; "20.0"] ~packing:vbox#pack () in
+  let directionals_hbox = GPack.hbox ~packing:directionals_alignment#add () in
+  let directionals =
+    let frame = GBin.frame ~packing:directionals_hbox#add () in
+    GPack.table ~packing:frame#add ~columns:5 ~rows:4 () in
+  let z_controls_box =
+    let frame = GBin.frame ~packing:directionals_hbox#add () in
+    GPack.table ~packing:frame#add ~columns:3 ~rows:3 () in
+  let (travel_length, _) = GEdit.combo_box_entry_text ~strings:["0.05"; "0.1"; "1.0"; "10.0"; "20.0"] ~packing:(directionals#attach ~left:0 ~right:3 ~top:3) () in
+  let (z_travel_length, _) = GEdit.combo_box_entry_text ~strings:["0.05"; "0.1"; "1.0"] ~packing:(z_controls_box#attach ~left:0 ~top:2) () in
   let info = GMisc.label ~packing:(vbox#pack ~expand:true) () in
   travel_length#entry#set_text "1.0";
+  z_travel_length#entry#set_text "1.0";
   let cnc_x = ref 0.0  in
   let cnc_y = ref 0.0 in
   let position_adjust_callback = Hook.create () in
@@ -42,10 +50,20 @@ let view ~packing cnc () =
     let y_ofs = float y_dir *. length in
     move_by x_ofs y_ofs
   in
+  let move_z z_dir _ =
+    let length = float_of_string (z_travel_length#entry#text) in
+    let z_ofs = float z_dir *. length in
+    with_cnc @@ fun cnc ->
+      Cnc.wait cnc (Cnc.set_feed_rate 100.0);
+      Cnc.wait cnc Cnc.set_relative;
+      Cnc.ignore cnc (Cnc.travel [`Z z_ofs])
+  in
   ignore ((GButton.button ~label:"Y+" ~packing:(directionals#attach ~left:1 ~top:0) ())#connect#clicked (move (0) (1)));
   ignore ((GButton.button ~label:"Y-" ~packing:(directionals#attach ~left:1 ~top:2) ())#connect#clicked (move (0) (-1)));
   ignore ((GButton.button ~label:"X+" ~packing:(directionals#attach ~left:2 ~top:1) ())#connect#clicked (move (1) (0)));
   ignore ((GButton.button ~label:"X-" ~packing:(directionals#attach ~left:0 ~top:1) ())#connect#clicked (move (-1) (0)));
+  ignore ((GButton.button ~label:"Z+" ~packing:(z_controls_box#attach ~left:0 ~top:0) ())#connect#clicked (move_z (1)));
+  ignore ((GButton.button ~label:"Z-" ~packing:(z_controls_box#attach ~left:0 ~top:1) ())#connect#clicked (move_z (-1)));
   let handle_tinyg_report (report : Cnc.status_tinyg) = 
     info#set_label (
       let (x, y) = Gg.V2.to_tuple (Gg.V2.sub (Gg.V2.v report.x report.y) (coord_mode_offset !coord_mode)) in
