@@ -497,6 +497,28 @@ let gcode_transformer ~packing ~callback () =
   let save_button = GButton.button ~label:"Save" ~packing () in
   save_button#connect#clicked ~callback
 
+let upload_button ~packing ~callback () =
+  let button = GButton.button ~label:"Run CNC job" ~packing () in
+  button#connect#clicked ~callback
+
+let start_upload_program program cnc =
+  let strings = Enum.map Gcode.Evaluate.string_of_step_result program in
+  let o = 
+    let finished = new Future.t in
+    ( object
+      method finished = finished
+      end )
+  in
+  let rec loop () =
+    match Enum.get strings with
+    | None -> o#finished#set ()
+    | Some str ->
+      Cnc.async cnc (Cnc.raw_gcode str) @@ fun () ->
+	loop ()
+  in
+  loop ();
+  o
+
 let gui sigint_triggered config camera_matrix_arg (tool_camera_offset : Gg.V2.t option) gcode_filename video_device =
   let accel_group = GtkData.AccelGroup.create () in
   let video = 
@@ -594,6 +616,18 @@ let gui sigint_triggered config camera_matrix_arg (tool_camera_offset : Gg.V2.t 
       | _ -> ()
     in
     gcode_transformer ~packing:control_box#pack ~callback ();
+  in
+  let _ =
+    let callback () =
+      match !(env#gcode), cnc with
+      | Some gcode, Some cnc ->
+	cnc_control#set_enabled false;
+	let upload = start_upload_program (List.enum gcode) cnc in
+	upload#finished#add_persistent_callback (fun () -> cnc_control#set_enabled true);
+	()
+      | _ -> ()
+    in
+    upload_button ~packing:control_box#pack ~callback ();
   in
   ignore (Hook.hook liveview#on_mouse_move (show_location env));
   image_updater env ();
