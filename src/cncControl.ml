@@ -63,13 +63,15 @@ let view ~packing cnc () =
       Cnc.ignore cnc (Cnc.travel [`Z z_ofs])
   in
   let reset_z _ = reference_z := !cnc_z in
-  ignore ((GButton.button ~label:"Y+" ~packing:(directionals#attach ~left:1 ~top:0) ())#connect#clicked (move (0) (1)));
-  ignore ((GButton.button ~label:"Y-" ~packing:(directionals#attach ~left:1 ~top:2) ())#connect#clicked (move (0) (-1)));
-  ignore ((GButton.button ~label:"X+" ~packing:(directionals#attach ~left:2 ~top:1) ())#connect#clicked (move (1) (0)));
-  ignore ((GButton.button ~label:"X-" ~packing:(directionals#attach ~left:0 ~top:1) ())#connect#clicked (move (-1) (0)));
-  ignore ((GButton.button ~label:"Z+" ~packing:(z_controls_box#attach ~left:0 ~top:0) ())#connect#clicked (move_z (1)));
-  ignore ((GButton.button ~label:"Z-" ~packing:(z_controls_box#attach ~left:0 ~top:1) ())#connect#clicked (move_z (-1)));
-  ignore ((GButton.button ~label:"Reset Z" ~packing:(z_controls_box#attach ~left:0 ~top:2) ())#connect#clicked reset_z);
+  let elements = ref [] in
+  let add e = elements := e::!elements; e in
+  ignore ((add @@ GButton.button ~label:"Y+" ~packing:(directionals#attach ~left:1 ~top:0) ())#connect#clicked (move (0) (1)));
+  ignore ((add @@ GButton.button ~label:"Y-" ~packing:(directionals#attach ~left:1 ~top:2) ())#connect#clicked (move (0) (-1)));
+  ignore ((add @@ GButton.button ~label:"X+" ~packing:(directionals#attach ~left:2 ~top:1) ())#connect#clicked (move (1) (0)));
+  ignore ((add @@ GButton.button ~label:"X-" ~packing:(directionals#attach ~left:0 ~top:1) ())#connect#clicked (move (-1) (0)));
+  ignore ((add @@ GButton.button ~label:"Z+" ~packing:(z_controls_box#attach ~left:0 ~top:0) ())#connect#clicked (move_z (1)));
+  ignore ((add @@ GButton.button ~label:"Z-" ~packing:(z_controls_box#attach ~left:0 ~top:1) ())#connect#clicked (move_z (-1)));
+  ignore ((add @@ GButton.button ~label:"Reset Z" ~packing:(z_controls_box#attach ~left:0 ~top:2) ())#connect#clicked reset_z);
   let handle_tinyg_report (report : Cnc.status_tinyg) = 
     info#set_label (
       let (x, y) = Gg.V2.to_tuple (Gg.V2.sub (Gg.V2.v report.x report.y) (coord_mode_offset !coord_mode)) in
@@ -95,6 +97,11 @@ let view ~packing cnc () =
 	Cnc.wait cnc Cnc.set_relative;
 	Cnc.ignore cnc (Cnc.travel [`X x_ofs; `Y y_ofs])
   in
+  let set_enabled mode =
+    List.iter 
+      (fun el -> el#misc#set_sensitive mode)
+      !elements
+  in
   object 
     method get_position = Gg.V3.v !cnc_x !cnc_y (!cnc_z -. !reference_z)
     method get_viewport_position = Gg.V2.sub (Gg.V2.v !cnc_x !cnc_y) (coord_mode_offset !coord_mode)
@@ -113,4 +120,6 @@ let view ~packing cnc () =
 	camera_offset := offset
     method get_camera_offset offset = !camera_offset
     method get_camera_position = Gg.V2.sub (Gg.V2.v !cnc_x !cnc_y) !camera_offset
+
+    method set_enabled = set_enabled
   end
