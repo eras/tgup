@@ -41,11 +41,15 @@ type io_thread_state = {
   status_report_tinyg	      : status_tinyg Hook.t;
 }
 
+type write_message =
+| WriteChar of char
+| WriteNotify of (unit -> unit)
+
 type internal_state = {
   get_next_handler	      : (unit -> (receive_handler * receive_finish) option);
   status_tinyg		      : status_tinyg option ref;
   io_thread_state	      : io_thread_state Protect.t;
-  write_queue		      : char Queue.t;
+  write_queue		      : write_message  Queue.t;
   mutable next_write_time     : float;
   mutable xon                 : bool;
   mutable queue_full          : bool;
@@ -63,7 +67,15 @@ type t = {
   ext_requests                : ext_requests;
 }
 
-type 'a request = unit -> ((t -> unit) * (('a -> unit) -> unit -> (receive_handler * receive_finish)))
+type handler_bottomend = (receive_handler * receive_finish)
+
+type 'a handler_kind =
+(* handlerLine is given a function to call once a response is formed;
+   for that it returns the function that handles input *)
+| HandlerLine of (('a -> unit) -> (unit -> handler_bottomend))
+| HandlerFuture of 'a Future.t
+
+type 'a request = unit -> ((t -> unit) * ('a handler_kind))
 
 let rec ignore_loop : receive_handler =
   Cont (fun _str -> (ignore_loop, fun () -> Printf.printf "Ignoring finish after loop\n%!"))
@@ -248,10 +260,15 @@ let handle_control control_fd ext_requests internal_state (cont : unit -> _) =
   cont ()
 
 let handle_write cnc_fd internal_state (cont : unit -> _) =
-  let str = String.make 1 (Queue.take internal_state.write_queue) in
-  ignore (Unix.write cnc_fd str 0 1);	(* TODO: check for return value *)
-  internal_state.next_write_time <- internal_state.next_write_time +. (1.0 /. (38400.0 /. 8.0));
-  cont ()
+  match Queue.take internal_state.write_queue with
+  | WriteChar ch ->
+    let str = String.make 1 ch in
+    ignore (Unix.write cnc_fd str 0 1);	(* TODO: check for return value *)
+    internal_state.next_write_time <- internal_state.next_write_time +. (1.0 /. (38400.0 /. 8.0));
+    cont ()
+  | WriteNotify f ->
+    f ();
+    cont ()
 
 let io_thread (control_fd, cnc_fd, io_thread_state, ext_requests) =
   let buf = String.create 1024 in
@@ -344,15 +361,26 @@ let external_request (t : t) f =
     Queue.add f reqs;
     ignore (Unix.write t.control_write "X" 0 1)	(* TODO: check for return value *)
 
+let enqueue_notify (t : t) f =
+  external_request t @@ fun rs ->
+    Queue.add (WriteNotify f) rs.write_queue
+
 let enqueue_str (t : t) str =
   external_request t @@ fun rs ->
     List.iter
-      (fun c -> Queue.add c rs.write_queue)
+      (fun c -> Queue.add (WriteChar c) rs.write_queue)
       (String.explode str);
     let now = Unix.gettimeofday() in
     rs.next_write_time <- max rs.next_write_time now
 
-let send_str mk_msg (handle_response : ('a -> unit) -> unit -> receive_handler * receive_finish) : 'a request =
+let send_raw_noresponse str : unit request =
+  fun () ->
+    let future = new Future.t in
+    ((fun t -> enqueue_str t str; enqueue_notify t future#set),
+     HandlerFuture future
+    )
+
+let send_str mk_msg (handle_response : (('a -> unit) -> (unit -> handler_bottomend))) : 'a request =
   fun () ->
     (( fun t ->
       let msg = mk_msg t.line in
@@ -360,7 +388,7 @@ let send_str mk_msg (handle_response : ('a -> unit) -> unit -> receive_handler *
       let msg = msg ^ "\n" in
       enqueue_str t msg;
       t.line <- t.line + 1 ),
-     handle_response
+     HandlerLine handle_response
     )
 
 let not1 f x = not (f x)
@@ -384,22 +412,22 @@ let send_gcode msg = send_json (`Assoc ["gc", `String msg])
 
 let unit_response (respond : unit -> unit) =
   let rec loop _str = (Cont loop, respond) in
-    fun () -> (Cont loop, respond)
+  fun () -> (Cont loop, respond)
 
 let foldl_response f v0 (respond : 'a -> unit) =
   let rec loop v str = (Cont (loop (f v str)), fun () -> respond v) in
-    fun () -> (Cont (loop v0), fun () -> respond v0)
+  fun () -> (Cont (loop v0), fun () -> respond v0)
 
 (* actually this just retrieves the last string *)
 let single_string_response (respond : string -> unit) =
   let rec loop str = 
     (Cont loop, fun () -> respond str) in
-    fun () -> (Cont loop, fun () -> respond "")
+  fun () -> (Cont loop, fun () -> respond "")
 
 let json_response (respond : Json.json option -> unit) =
   let rec loop str = 
     (Cont loop, fun () -> respond (Some (Json.from_string str))) in
-    fun () -> (Cont loop, fun () -> respond None)
+  fun () -> (Cont loop, fun () -> respond None)
 
 let home axis =
   send_gcode ("G28 " ^ String.concat " " (List.map (fun axis -> name_of_axis axis ^ "0") axis)) unit_response
@@ -415,6 +443,8 @@ let string_of_axis axis =
 	      ) 
   |> List.map (uncurry (Printf.sprintf "%s%.3f"))
   |> String.concat " "
+
+let flush_queue : unit request = send_raw_noresponse "!%"
 
 let raw_gcode str = send_gcode str unit_response
 
@@ -512,12 +542,17 @@ let set_port port value =
 
 let async t (request : 'a request) (callback : 'a -> unit) =
   let (issue, handler) = request () in
-  let handler = handler callback in
+  ( match handler with
+  | HandlerLine handler -> 
+    let handler = handler callback in
     Protect.access t.receiver (
       fun st ->
-	st.line_callbacks <- BatDeque.snoc st.line_callbacks handler;
+        st.line_callbacks <- BatDeque.snoc st.line_callbacks handler;
     );
-    issue t
+  | HandlerFuture future -> 
+    future#add_persistent_callback callback
+  );
+  issue t
 
 let wait : 'a. t -> 'a request -> 'a = fun t request ->
   let sync = Event.new_channel () in
