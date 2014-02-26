@@ -33,6 +33,8 @@ type status_tinyg = {
 let xon = Char.chr 17
 let xoff = Char.chr 19
 
+let queue_threshold = 20 (* once there are less than n slots available, don't send new commands *)
+
 type io_thread_state = {
   mutable received_ack	      : int;
   mutable line_callbacks      : (unit -> (receive_handler * receive_finish)) BatDeque.t;
@@ -46,6 +48,7 @@ type internal_state = {
   write_queue		      : char Queue.t;
   mutable next_write_time     : float;
   mutable xon                 : bool;
+  mutable queue_full          : bool;
 }
 
 type ext_requests = (internal_state -> unit) Queue.t Protect.t
@@ -123,6 +126,10 @@ let process_sr internal_state sr =
     let updated_status = updated_status_tinyg status sr in
     internal_state.status_tinyg := Some updated_status;
     Hook.issue (Protect.access internal_state.io_thread_state (fun state -> state.status_report_tinyg)) updated_status
+
+let process_qr internal_state qr =
+  let open Json in
+  internal_state.queue_full <- Option.default false (Option.map (fun x -> get_int x < queue_threshold) qr)
     
 let process_initial_sr internal_state sr =
   let status = parse_status_tinyg sr in
@@ -155,10 +162,11 @@ let process_json internal_state handler str =
     with _ -> None
   in
   let response_kind = 
-    match json +> "r", json +> "sr" with
-    | Some r, _	 -> `R r
-    | _, Some sr -> `SR sr
-    | _		 -> `None
+    match json +> "r", json +> "sr", json +> "qr" with
+    | Some r, _, _  -> `R r
+    | _, Some sr, _ -> `SR sr
+    | _, _, Some qr -> `QR qr
+    | _		    -> `None
   in
   match response_kind with
   | `None ->
@@ -167,6 +175,9 @@ let process_json internal_state handler str =
     handler
   | `SR sr ->
     process_sr internal_state (Some sr);
+    handler
+  | `QR qr ->
+    process_qr internal_state (Some qr);
     handler
   | `R r ->
     let sr = lazy (Some r +> "sr") in
@@ -265,10 +276,11 @@ let io_thread (control_fd, cnc_fd, io_thread_state, ext_requests) =
     write_queue	     = Queue.create ();
     next_write_time  = 0.0;
     xon              = true;
+    queue_full       = false;
   } in
   let rec loop (handler : (receive_handler * receive_finish) option) =
     let (want_rws, timeout) =
-      if Queue.is_empty internal_state.write_queue || not internal_state.xon
+      if Queue.is_empty internal_state.write_queue || not internal_state.xon || internal_state.queue_full
       then ([], None)
       else
 	let now = Unix.gettimeofday () in
