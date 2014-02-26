@@ -30,6 +30,9 @@ type status_tinyg = {
   momo : int;
 }
 
+let xon = Char.chr 17
+let xoff = Char.chr 19
+
 type io_thread_state = {
   mutable received_ack	      : int;
   mutable line_callbacks      : (unit -> (receive_handler * receive_finish)) BatDeque.t;
@@ -42,6 +45,7 @@ type internal_state = {
   io_thread_state	      : io_thread_state Protect.t;
   write_queue		      : char Queue.t;
   mutable next_write_time     : float;
+  mutable xon                 : bool;
 }
 
 type ext_requests = (internal_state -> unit) Queue.t Protect.t
@@ -174,6 +178,12 @@ let rec handle_rds io_thread_state get_next_handler lb buf internal_state cnc_fd
   let n = Unix.read cnc_fd buf 0 (String.length buf) in
   if n > 0 
   then (
+    for c = 0 to String.length buf - 1 do
+      match buf.[c] with
+      | ch when ch = xon -> internal_state.xon <- true;
+      | ch when ch = xoff -> internal_state.xon <- false;
+      | _ -> ()
+    done;
     let strs = LineBuffer.append_substring lb buf 0 n in
     let handler =
       List.fold_left
@@ -254,10 +264,11 @@ let io_thread (control_fd, cnc_fd, io_thread_state, ext_requests) =
     status_tinyg     = ref None;
     write_queue	     = Queue.create ();
     next_write_time  = 0.0;
+    xon              = true;
   } in
   let rec loop (handler : (receive_handler * receive_finish) option) =
     let (want_rws, timeout) =
-      if Queue.is_empty internal_state.write_queue
+      if Queue.is_empty internal_state.write_queue || not internal_state.xon
       then ([], None)
       else
 	let now = Unix.gettimeofday () in
