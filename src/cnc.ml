@@ -416,6 +416,8 @@ let string_of_axis axis =
   |> List.map (uncurry (Printf.sprintf "%s%.3f"))
   |> String.concat " "
 
+let raw_gcode str = send_gcode str unit_response
+
 let travel axis = send_gcode ("G0 " ^ string_of_axis axis) unit_response
 
 let feed axis = send_gcode ("G1 " ^ string_of_axis axis) unit_response

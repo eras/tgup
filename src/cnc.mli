@@ -74,6 +74,9 @@ val set_power : bool -> unit request
 (** Marlin: [set_port portnumber value] sets a port to a certain value *)
 val set_port : int -> int -> unit request
 
+(** Send a raw request (without newline); a line number N will be added *)
+val raw_gcode : string -> unit request
+
 (** [wait t request] synchronously sends in a request *)
 val wait : t -> 'a request -> 'a
 
