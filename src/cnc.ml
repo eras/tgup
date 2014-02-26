@@ -30,29 +30,36 @@ type status_tinyg = {
   momo : int;
 }
 
-type receiver_state = {
-  mutable received_ack	 : int;
-  mutable line_callbacks : (unit -> (receive_handler * receive_finish)) BatDeque.t;
-  status_report_tinyg	 : status_tinyg Hook.t;
+type io_thread_state = {
+  mutable received_ack	      : int;
+  mutable line_callbacks      : (unit -> (receive_handler * receive_finish)) BatDeque.t;
+  status_report_tinyg	      : status_tinyg Hook.t;
 }
+
+type internal_state = {
+  get_next_handler	      : (unit -> (receive_handler * receive_finish) option);
+  status_tinyg		      : status_tinyg option ref;
+  io_thread_state	      : io_thread_state Protect.t;
+  write_queue		      : char Queue.t;
+  mutable next_write_time     : float;
+}
+
+type ext_requests = (internal_state -> unit) Queue.t Protect.t
 
 type t = { 
   fd			      : Unix.file_descr;
   mutable line		      : int;
-  receiver		      : receiver_state Protect.t;
+  receiver		      : io_thread_state Protect.t;
   status_report_tinyg	      : status_tinyg Hook.t;
+
+  control_write               : Unix.file_descr; (* used for passing requests to the IO thread *)
+  ext_requests                : ext_requests;
 }
 
 type 'a request = unit -> ((t -> unit) * (('a -> unit) -> unit -> (receive_handler * receive_finish)))
 
 let rec ignore_loop : receive_handler =
   Cont (fun _str -> (ignore_loop, fun () -> Printf.printf "Ignoring finish after loop\n%!"))
-
-type reader_env = {
-  get_next_handler	      : (unit -> (receive_handler * receive_finish) option);
-  status_tinyg		      : status_tinyg option ref;
-  receiver_state	      : receiver_state Protect.t;
-}
 
 module ParseStatusTinyG = struct
   let get sr =
@@ -105,23 +112,23 @@ let updated_status_tinyg status sr =
     dist = i status.dist dist;
     momo = i status.momo momo }  
 
-let process_sr reader_env sr =
-  match !(reader_env.status_tinyg) with
+let process_sr internal_state sr =
+  match !(internal_state.status_tinyg) with
   | None -> ()
   | Some status -> 
     let updated_status = updated_status_tinyg status sr in
-    reader_env.status_tinyg := Some updated_status;
-    Hook.issue (Protect.access reader_env.receiver_state (fun state -> state.status_report_tinyg)) updated_status
+    internal_state.status_tinyg := Some updated_status;
+    Hook.issue (Protect.access internal_state.io_thread_state (fun state -> state.status_report_tinyg)) updated_status
     
-let process_initial_sr reader_env sr =
+let process_initial_sr internal_state sr =
   let status = parse_status_tinyg sr in
-  reader_env.status_tinyg := Some status;
-  Hook.issue (Protect.access reader_env.receiver_state (fun state -> state.status_report_tinyg)) status  
+  internal_state.status_tinyg := Some status;
+  Hook.issue (Protect.access internal_state.io_thread_state (fun state -> state.status_report_tinyg)) status  
 
-let process_r reader_env handler r =
+let process_r internal_state handler r =
   let handler =
     match handler with
-    | None -> reader_env.get_next_handler ()
+    | None -> internal_state.get_next_handler ()
     | Some handler -> Some handler
   in
   ( match handler with
@@ -129,7 +136,7 @@ let process_r reader_env handler r =
   | Some (Cont f, _finish) -> 
     let open Json in
     let (_handler, finish) = f (to_string r) in
-    Protect.access reader_env.receiver_state (
+    Protect.access internal_state.io_thread_state (
       fun st ->
 	st.received_ack <- st.received_ack + 1;
     );
@@ -137,7 +144,7 @@ let process_r reader_env handler r =
     None
   )
 
-let process_json reader_env handler str =
+let process_json internal_state handler str =
   let open Json in
   let json =
     try Some (from_string str)
@@ -155,20 +162,82 @@ let process_json reader_env handler str =
     Printf.fprintf stderr "Cnc.reader.loop.process_json: cannot parse %s\n%!" str;
     handler
   | `SR sr ->
-    process_sr reader_env (Some sr);
+    process_sr internal_state (Some sr);
     handler
   | `R r ->
     let sr = lazy (Some r +> "sr") in
-    if !(reader_env.status_tinyg) = None && Lazy.force sr <> None then
-      process_initial_sr reader_env (Lazy.force sr);
-    process_r reader_env handler r
+    if !(internal_state.status_tinyg) = None && Lazy.force sr <> None then
+      process_initial_sr internal_state (Lazy.force sr);
+    process_r internal_state handler r
 
-let reader (fd, receiver_state) =
+let rec handle_rds io_thread_state get_next_handler lb buf internal_state cnc_fd handler cont =
+  let n = Unix.read cnc_fd buf 0 (String.length buf) in
+  if n > 0 
+  then (
+    let strs = LineBuffer.append_substring lb buf 0 n in
+    let handler =
+      List.fold_left
+	(fun (handler : (receive_handler * receive_finish) option) str ->
+	  Printf.printf "CNC<-%s\n%!" str;
+	  let handler : (receive_handler * receive_finish) option =
+	    match str with
+	    | str when Pcre.pmatch ~pat:"{" str ->
+	      process_json internal_state handler str
+	    | str when Pcre.pmatch ~pat:"ok" str ->
+	      (match handler with
+	      | None -> BatOption.may (fun (_, finish) -> finish ()) (get_next_handler ())
+	      | Some (_, finish) -> finish ());
+	      Protect.access io_thread_state (
+		fun st ->
+		  st.received_ack <- st.received_ack + 1;
+	      );
+	      None
+	    | "start" ->
+	      Protect.access io_thread_state (
+		fun st -> 
+		  st.received_ack <- 1;
+		       (* TODO: call some error handler for remaining messages *)
+		  st.line_callbacks <- BatDeque.empty;
+	      );
+	      None
+	    | str ->
+	      let handler =
+		match handler with
+		| None -> get_next_handler ()
+		| Some handler -> Some handler
+	      in
+	      match handler with
+	      | None -> None
+	      | Some (Cont f, _finish) -> Some (f str)
+	  in
+	  handler
+	)
+	handler
+	strs
+    in
+    cont handler
+  ) else ()
+
+
+let handle_control control_fd ext_requests internal_state (cont : unit -> _) =
+  let buf = String.make 1 ' ' in
+  ignore (Unix.read control_fd buf 0 1); (* TODO: check for return value *)
+  let req = Protect.access ext_requests Queue.take in
+  req internal_state;
+  cont ()
+
+let handle_write cnc_fd internal_state (cont : unit -> _) =
+  let str = String.make 1 (Queue.take internal_state.write_queue) in
+  ignore (Unix.write cnc_fd str 0 1);	(* TODO: check for return value *)
+  internal_state.next_write_time <- internal_state.next_write_time +. (1.0 /. (38400.0 /. 8.0));
+  cont ()
+
+let io_thread (control_fd, cnc_fd, io_thread_state, ext_requests) =
   let buf = String.create 1024 in
   let lb = LineBuffer.create () in
   let rec get_next_handler () : (receive_handler * receive_finish) option =
     let handler =
-      Protect.access receiver_state (
+      Protect.access io_thread_state (
 	fun st ->
 	  match BatDeque.front st.line_callbacks with
 	    | None -> (fun () -> None)
@@ -179,58 +248,29 @@ let reader (fd, receiver_state) =
     in
       handler
   in
-  let reader_env = {
-    receiver_state   = receiver_state;
+  let internal_state = {
+    io_thread_state  = io_thread_state;
     get_next_handler = get_next_handler;
     status_tinyg     = ref None;
+    write_queue	     = Queue.create ();
+    next_write_time  = 0.0;
   } in
   let rec loop (handler : (receive_handler * receive_finish) option) =
-    let n = Unix.read fd buf 0 (String.length buf) in
-      if n > 0 
-      then (
-	let strs = LineBuffer.append_substring lb buf 0 n in
-	let handler =
-	  List.fold_left
-	    (fun (handler : (receive_handler * receive_finish) option) str ->
-	       Printf.printf "CNC<-%s\n%!" str;
-	       let handler : (receive_handler * receive_finish) option =
-		 match str with
-		 | str when Pcre.pmatch ~pat:"{" str ->
-		   process_json reader_env handler str
-		 | str when Pcre.pmatch ~pat:"ok" str ->
-		   (match handler with
-		   | None -> BatOption.may (fun (_, finish) -> finish ()) (get_next_handler ())
-		   | Some (_, finish) -> finish ());
-		   Protect.access receiver_state (
-		     fun st ->
-		       st.received_ack <- st.received_ack + 1;
-		   );
-		   None
-		 | "start" ->
-		   Protect.access receiver_state (
-		     fun st -> 
-		       st.received_ack <- 1;
-			   (* TODO: call some error handler for remaining messages *)
-		       st.line_callbacks <- BatDeque.empty;
-		   );
-		   None
-		 | str ->
-		   let handler =
-		     match handler with
-		     | None -> get_next_handler ()
-		     | Some handler -> Some handler
-		   in
-		   match handler with
-		   | None -> None
-		   | Some (Cont f, _finish) -> Some (f str)
-	       in
-		 handler
-	    )
-	    handler
-	    strs
-	in
-	  loop handler
-      ) else ()
+    let (want_rws, timeout) =
+      if Queue.is_empty internal_state.write_queue
+      then ([], None)
+      else
+	let now = Unix.gettimeofday () in
+	if now < internal_state.next_write_time
+	then ([], Some (internal_state.next_write_time -. now))
+	else ([cnc_fd], None)
+    in
+    let (rds, wrs, exn) = Unix.select [cnc_fd; control_fd] want_rws [] (Option.default ~-.1.0 timeout) in
+    match () with
+    | _ when List.mem cnc_fd rds -> handle_rds io_thread_state get_next_handler lb buf internal_state cnc_fd handler loop
+    | _ when List.mem control_fd rds -> handle_control control_fd ext_requests internal_state (fun () -> loop handler)
+    | _ when List.mem cnc_fd wrs -> handle_write cnc_fd internal_state (fun () -> loop handler)
+    | _ -> loop handler
   in
     loop None
 
@@ -255,22 +295,39 @@ let connect device bps =
   } in
   let _ = Unix.tcsetattr fd Unix.TCSANOW tio in
   let status_report_tinyg = Hook.create () in
+  let ext_requests = Protect.create (Mutex.create ()) (Queue.create ()) in
   let receiver =
     Protect.create (Mutex.create ())
       { received_ack    = 1;
 	line_callbacks	= BatDeque.empty;
-	status_report_tinyg }
+	status_report_tinyg; }
   in
-  let _ = Thread.create reader (fd, receiver) in
+  let (control_read, control_write) = Unix.pipe () in
+  let _ = Thread.create io_thread (control_read, fd, receiver, ext_requests) in
     { fd;
-      line = 1;
+      line	      = 1;
       receiver;
-      status_report_tinyg; }
+      control_write;
+      status_report_tinyg;
+      ext_requests; }
 
 let name_of_axis = function
   | `X -> "X"
   | `Y -> "Y"
   | `Z -> "Z"
+
+let external_request (t : t) f =
+  Protect.access t.ext_requests @@ fun reqs ->
+    Queue.add f reqs;
+    ignore (Unix.write t.control_write "X" 0 1)	(* TODO: check for return value *)
+
+let enqueue_str (t : t) str =
+  external_request t @@ fun rs ->
+    List.iter
+      (fun c -> Queue.add c rs.write_queue)
+      (String.explode str);
+    let now = Unix.gettimeofday() in
+    rs.next_write_time <- max rs.next_write_time now
 
 let send_str mk_msg (handle_response : ('a -> unit) -> unit -> receive_handler * receive_finish) : 'a request =
   fun () ->
@@ -278,7 +335,7 @@ let send_str mk_msg (handle_response : ('a -> unit) -> unit -> receive_handler *
       let msg = mk_msg t.line in
       let _ = Printf.printf "->CNC: %s\n%!" msg in
       let msg = msg ^ "\n" in
-      ignore (Unix.write t.fd msg 0 (String.length msg));
+      enqueue_str t msg;
       t.line <- t.line + 1 ),
      handle_response
     )
