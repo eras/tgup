@@ -322,7 +322,7 @@ let mark_location_widget ~label ~packing ?tooltip cnc_control f =
   ignore (mark_button#connect#clicked ~callback:set_mark)
 
 let get_tool_position cnc =
-  let status = Cnc.wait cnc Cnc.status_tinyg in
+  let Cnc.ResultOK status = Cnc.wait cnc Cnc.status_tinyg in
   Gg.V2.v status.x status.y
 
 let coordinate_translation src dst =
@@ -511,10 +511,11 @@ let start_upload_program program cnc =
   in
   let rec loop () =
     match Enum.get strings with
-    | None -> o#finished#set ()
+    | None -> o#finished#set `Success
     | Some str ->
-      Cnc.async cnc (Cnc.raw_gcode str) @@ fun () ->
-	loop ()
+      Cnc.async cnc (Cnc.raw_gcode str) @@ function 
+	| ResultOK () -> loop ()
+	| ResultDequeued -> o#finished#set `Failure
   in
   loop ();
   o
@@ -623,7 +624,7 @@ let gui sigint_triggered config camera_matrix_arg (tool_camera_offset : Gg.V2.t 
       | Some gcode, Some cnc ->
 	cnc_control#set_enabled false;
 	let upload = start_upload_program (List.enum gcode) cnc in
-	upload#finished#add_persistent_callback (fun () -> cnc_control#set_enabled true);
+	upload#finished#add_persistent_callback (function `Failure | `Success -> cnc_control#set_enabled true);
 	()
       | _ -> ()
     in

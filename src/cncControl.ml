@@ -80,7 +80,7 @@ let view ~packing cnc () =
   in
   with_cnc (fun cnc ->
     ignore (Hook.hook (Cnc.status_report_tinyg cnc) handle_tinyg_report);
-    let status = Cnc.wait cnc Cnc.status_tinyg in
+    let Cnc.ResultOK status = Cnc.wait cnc Cnc.status_tinyg in
     cnc_x := status.x;
     cnc_y := status.y;
     cnc_z := status.z;

@@ -13,6 +13,10 @@ type status_tinyg = {
 
 type t
 
+type 'a result =
+| ResultOK of 'a
+| ResultDequeued
+
 (** [connect "/dev/ttyUSB0" 115200] connects to a CNC device *)
 val connect : string -> int -> t
 
@@ -81,10 +85,10 @@ val raw_gcode : string -> unit request
 val flush_queue : unit request
 
 (** [wait t request] synchronously sends in a request *)
-val wait : t -> 'a request -> 'a
+val wait : t -> 'a request -> 'a result
 
 (** [async t request callback] asynchronously sends in a request. The callback will be called when a response arrives. *)
-val async : t -> 'a request -> ('a -> unit) -> unit
+val async : t -> 'a request -> ('a result -> unit) -> unit
 
 (** [ignore t request] is the same as [async r request], but there is
     no callback function (nor a value can be retrieved) *)

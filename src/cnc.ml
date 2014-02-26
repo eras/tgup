@@ -3,13 +3,19 @@ open Common
 
 type handled_token = int
 
+type 'a result =
+| ResultOK of 'a
+| ResultDequeued
+
+type request_finish_state = unit result
+
 (* First a unit -> receive_handler function is used to get a function
    that handles each input.
 
    The handling function returns both a continuation for handling following
    lines and another function, that is used to handle the "ok" *)
 type receive_handler = Cont of (string -> (receive_handler * receive_finish))
-and receive_finish = unit -> unit
+and receive_finish = request_finish_state -> unit
 
 let register_of_char = function
   | 'X' -> `X
@@ -43,7 +49,7 @@ type io_thread_state = {
 
 type write_message =
 | WriteChar of char
-| WriteNotify of (unit -> unit)
+| WriteNotify of (request_finish_state -> unit)
 
 type internal_state = {
   get_next_handler	      : (unit -> (receive_handler * receive_finish) option);
@@ -72,13 +78,13 @@ type handler_bottomend = (receive_handler * receive_finish)
 type 'a handler_kind =
 (* handlerLine is given a function to call once a response is formed;
    for that it returns the function that handles input *)
-| HandlerLine of (('a -> unit) -> (unit -> handler_bottomend))
-| HandlerFuture of 'a Future.t
+| HandlerLine of (('a result -> unit) -> (unit -> handler_bottomend))
+| HandlerFuture of 'a result Future.t
 
 type 'a request = unit -> ((t -> unit) * ('a handler_kind))
 
 let rec ignore_loop : receive_handler =
-  Cont (fun _str -> (ignore_loop, fun () -> Printf.printf "Ignoring finish after loop\n%!"))
+  Cont (fun _str -> (ignore_loop, fun _ -> Printf.printf "Ignoring finish after loop\n%!"))
 
 module ParseStatusTinyG = struct
   let get sr =
@@ -163,7 +169,7 @@ let process_r internal_state handler r =
       fun st ->
 	st.received_ack <- st.received_ack + 1;
     );
-    finish ();
+    finish (ResultOK ());
     None
   )
 
@@ -197,7 +203,7 @@ let process_json internal_state handler str =
       process_initial_sr internal_state (Lazy.force sr);
     process_r internal_state handler r
 
-let rec handle_rds io_thread_state get_next_handler lb buf internal_state cnc_fd handler cont =
+let rec handle_rds io_thread_state (get_next_handler : unit -> (receive_handler * receive_finish) option) lb buf internal_state cnc_fd handler cont =
   let n = Unix.read cnc_fd buf 0 (String.length buf) in
   if n > 0 
   then (
@@ -218,8 +224,8 @@ let rec handle_rds io_thread_state get_next_handler lb buf internal_state cnc_fd
 	      process_json internal_state handler str
 	    | str when Pcre.pmatch ~pat:"ok" str ->
 	      (match handler with
-	      | None -> BatOption.may (fun (_, finish) -> finish ()) (get_next_handler ())
-	      | Some (_, finish) -> finish ());
+	      | None -> BatOption.may (fun (_, finish) -> finish (ResultOK ())) (get_next_handler ())
+	      | Some (_, finish) -> finish (ResultOK ()));
 	      Protect.access io_thread_state (
 		fun st ->
 		  st.received_ack <- st.received_ack + 1;
@@ -267,7 +273,7 @@ let handle_write cnc_fd internal_state (cont : unit -> _) =
     internal_state.next_write_time <- internal_state.next_write_time +. (1.0 /. (38400.0 /. 8.0));
     cont ()
   | WriteNotify f ->
-    f ();
+    f (ResultOK ());
     cont ()
 
 let io_thread (control_fd, cnc_fd, io_thread_state, ext_requests) =
@@ -361,6 +367,13 @@ let external_request (t : t) f =
     Queue.add f reqs;
     ignore (Unix.write t.control_write "X" 0 1)	(* TODO: check for return value *)
 
+let enqueue_flush (rs : internal_state) =
+  while not (Queue.is_empty rs.write_queue) do
+    match Queue.take rs.write_queue with
+    | WriteChar _ -> ()
+    | WriteNotify f -> f ResultDequeued
+  done
+
 let enqueue_notify (rs : internal_state) f =
   Queue.add (WriteNotify f) rs.write_queue
 
@@ -371,14 +384,33 @@ let enqueue_str (rs : internal_state) str =
   let now = Unix.gettimeofday() in
   rs.next_write_time <- max rs.next_write_time now
 
-let send_raw_noresponse str : unit request =
+let unit_of_request_finish_state f = function
+  | ResultOK () -> f (ResultOK ())
+  | ResultDequeued -> f ResultDequeued
+
+let send_raw_noresponse str future : unit request =
   fun () ->
-    let future = new Future.t in
-    ((fun t -> external_request t (fun rs -> enqueue_str rs str; enqueue_notify rs future#set)),
+    ((fun t ->
+      external_request t (fun rs ->
+        enqueue_str rs str;
+        enqueue_notify rs (unit_of_request_finish_state future#set))
+     ),
      HandlerFuture future
     )
 
-let send_str mk_msg (handle_response : (('a -> unit) -> (unit -> handler_bottomend))) : 'a request =
+let send_flush future : unit request =
+  fun () ->
+    ((fun t ->
+      external_request t (fun rs -> 
+        enqueue_flush rs;
+        enqueue_str rs "!%";
+        enqueue_notify rs (unit_of_request_finish_state future#set);
+      )
+     ),
+     HandlerFuture future
+    )
+
+let send_str mk_msg (handle_response : (('a result -> unit) -> (unit -> handler_bottomend))) : 'a request =
   fun () ->
     (( fun t ->
       let msg = mk_msg t.line in
@@ -408,24 +440,35 @@ let send_json msg = send_str @@ fun line ->
 
 let send_gcode msg = send_json (`Assoc ["gc", `String msg])
 
-let unit_response (respond : unit -> unit) =
-  let rec loop _str = (Cont loop, respond) in
+let unit_response (respond : unit result -> unit) =
+  let rec loop _str = (Cont loop, function ResultOK () -> respond (ResultOK ()) | ResultDequeued -> respond ResultDequeued) in
   fun () -> (Cont loop, respond)
 
 let foldl_response f v0 (respond : 'a -> unit) =
-  let rec loop v str = (Cont (loop (f v str)), fun () -> respond v) in
+  let rec loop v str =
+    (Cont (loop (f v str)), function ResultOK () -> respond v | ResultDequeued -> respond ResultDequeued)
+  in
   fun () -> (Cont (loop v0), fun () -> respond v0)
 
 (* actually this just retrieves the last string *)
-let single_string_response (respond : string -> unit) =
+let single_string_response (respond : string result -> unit) =
   let rec loop str = 
-    (Cont loop, fun () -> respond str) in
-  fun () -> (Cont loop, fun () -> respond "")
+    (Cont loop, function ResultOK () -> respond (ResultOK str) | ResultDequeued -> respond ResultDequeued) in
+  fun () -> (Cont loop,
+             function
+             | ResultOK () -> respond (ResultOK "")
+             | ResultDequeued -> respond ResultDequeued)
 
-let json_response (respond : Json.json option -> unit) =
+let json_response (respond : Json.json option result -> unit) =
   let rec loop str = 
-    (Cont loop, fun () -> respond (Some (Json.from_string str))) in
-  fun () -> (Cont loop, fun () -> respond None)
+    (Cont loop,
+     function
+     | ResultOK () -> respond (ResultOK (Some (Json.from_string str)))
+     | ResultDequeued -> respond ResultDequeued) in
+  fun () -> (Cont loop,
+             function
+             | ResultOK () -> respond (ResultOK None)
+             | ResultDequeued -> respond ResultDequeued)
 
 let home axis =
   send_gcode ("G28 " ^ String.concat " " (List.map (fun axis -> name_of_axis axis ^ "0") axis)) unit_response
@@ -442,7 +485,17 @@ let string_of_axis axis =
   |> List.map (uncurry (Printf.sprintf "%s%.3f"))
   |> String.concat " "
 
-let flush_queue : unit request = send_raw_noresponse "!%"
+let wrap_response : _ -> _ -> ('a -> unit) -> unit -> handler_bottomend =
+  fun input output respond ->
+    input (fun msg -> respond (output msg))
+
+let flush_queue : unit request = 
+  let future = new Future.t in
+  future#add_persistent_callback (function
+  | ResultOK () -> ()
+  | ResultDequeued -> ()
+  );
+  send_raw_noresponse "!%" future
 
 let raw_gcode str = send_gcode str unit_response
 
@@ -460,71 +513,71 @@ let set_relative = send_gcode ("G91") unit_response
 
 let set_acceleration axis = send_gcode ("M201 " ^ string_of_axis axis) unit_response
 
-let wrap_response input output =
-  fun respond ->
-    input (fun msg -> respond (output msg))
-
 let status_tinyg =
-  let process r =
-    let open Json in 
-    parse_status_tinyg (r +> "sr")
+  let process = function
+    | ResultOK r ->
+      let open Json in
+      ResultOK (parse_status_tinyg (r +> "sr"))
+    | ResultDequeued -> ResultDequeued
   in
   send_json (`Assoc [("sr", `String "")]) (wrap_response json_response process)
 
 let where =
-  let process str =
+  let process = function
+    | ResultDequeued -> ResultDequeued
+    | ResultOK str ->
     (* X:0.00Y:0.00Z:0.00E:0.00 Count X:0.00Y:0.00Z:0.00 *)
-    let ofs = ref 0 in
-    let len = String.length str in 
-    let get () = 
-      if !ofs >= len
-      then failwith "invalid response"
-      else str.[!ofs]
-    in
-    let next () = 
-      ofs := !ofs + 1;
-    in
-    let eof () = !ofs >= len in
-    let float_chars = BatString.explode "0123456789-." in
-    let rec loop collected = function
-      | `WaitRegister ->
+      let ofs = ref 0 in
+      let len = String.length str in 
+      let get () = 
+        if !ofs >= len
+        then failwith "invalid response"
+        else str.[!ofs]
+      in
+      let next () = 
+        ofs := !ofs + 1;
+      in
+      let eof () = !ofs >= len in
+      let float_chars = BatString.explode "0123456789-." in
+      let rec loop collected = function
+        | `WaitRegister ->
 	  if eof () 
 	  then collected
 	  else
 	    ( match get () with   
-		| ' ' -> next (); loop collected `WaitRegister
-		| 'C' -> collected
-		| ch -> next (); loop collected (`WaitColon ch) )
-      | `WaitColon register ->
+	    | ' ' -> next (); loop collected `WaitRegister
+	    | 'C' -> collected
+	    | ch -> next (); loop collected (`WaitColon ch) )
+        | `WaitColon register ->
 	  let ch = get () in
-	    if ch != ':' 
-	    then failwith "invalid response, expected :"
-	    else (
-	      next ();
-	      loop collected (`WaitFloat (register, []))
-	    )
-      | `WaitFloat (register, digits) ->
+	  if ch != ':' 
+	  then failwith "invalid response, expected :"
+	  else (
+	    next ();
+	    loop collected (`WaitFloat (register, []))
+	  )
+        | `WaitFloat (register, digits) ->
 	  if eof ()
 	  then 
 	    let value = float_of_string (BatString.implode (List.rev digits)) in
-	      ((register, value)::collected)
+	    ((register, value)::collected)
 	  else
 	    let ch = get () in
-	      if List.mem ch float_chars
-	      then (
-		next ();
-		loop collected (`WaitFloat (register, (ch::digits)))
-	      )
-	      else 
-		let value = float_of_string (BatString.implode (List.rev digits)) in
-		  loop ((register, value)::collected) `WaitRegister
-    in
-    let regs = List.rev (loop [] `WaitRegister) in
-      (List.assoc 'X' regs,
-       List.assoc 'Y' regs,
-       List.assoc 'Z' regs)
+	    if List.mem ch float_chars
+	    then (
+	      next ();
+	      loop collected (`WaitFloat (register, (ch::digits)))
+	    )
+	    else 
+	      let value = float_of_string (BatString.implode (List.rev digits)) in
+	      loop ((register, value)::collected) `WaitRegister
+      in
+      let regs = List.rev (loop [] `WaitRegister) in
+      ResultOK (List.assoc 'X' regs,
+                List.assoc 'Y' regs,
+                List.assoc 'Z' regs)
   in
-    send_gcode "M114" (wrap_response single_string_response process)
+  send_gcode "M114" (wrap_response single_string_response process)
 
 let motors_off =
   send_gcode "M84" unit_response
@@ -538,7 +591,7 @@ let set_power state =
 let set_port port value =
   send_gcode (Printf.sprintf "M42 P%d S%d" port value) unit_response
 
-let async t (request : 'a request) (callback : 'a -> unit) =
+let async t (request : 'a request) (callback : 'a result -> unit) =
   let (issue, handler) = request () in
   ( match handler with
   | HandlerLine handler -> 
@@ -552,7 +605,7 @@ let async t (request : 'a request) (callback : 'a -> unit) =
   );
   issue t
 
-let wait : 'a. t -> 'a request -> 'a = fun t request ->
+let wait : 'a. t -> 'a request -> 'a result = fun t request ->
   let sync = Event.new_channel () in
   let respond response = Event.sync (Event.send sync response) in
     async t request respond;
