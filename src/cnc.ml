@@ -361,22 +361,20 @@ let external_request (t : t) f =
     Queue.add f reqs;
     ignore (Unix.write t.control_write "X" 0 1)	(* TODO: check for return value *)
 
-let enqueue_notify (t : t) f =
-  external_request t @@ fun rs ->
-    Queue.add (WriteNotify f) rs.write_queue
+let enqueue_notify (rs : internal_state) f =
+  Queue.add (WriteNotify f) rs.write_queue
 
-let enqueue_str (t : t) str =
-  external_request t @@ fun rs ->
-    List.iter
-      (fun c -> Queue.add (WriteChar c) rs.write_queue)
-      (String.explode str);
-    let now = Unix.gettimeofday() in
-    rs.next_write_time <- max rs.next_write_time now
+let enqueue_str (rs : internal_state) str =
+  List.iter
+    (fun c -> Queue.add (WriteChar c) rs.write_queue)
+    (String.explode str);
+  let now = Unix.gettimeofday() in
+  rs.next_write_time <- max rs.next_write_time now
 
 let send_raw_noresponse str : unit request =
   fun () ->
     let future = new Future.t in
-    ((fun t -> enqueue_str t str; enqueue_notify t future#set),
+    ((fun t -> external_request t (fun rs -> enqueue_str rs str; enqueue_notify rs future#set)),
      HandlerFuture future
     )
 
@@ -386,7 +384,7 @@ let send_str mk_msg (handle_response : (('a -> unit) -> (unit -> handler_bottome
       let msg = mk_msg t.line in
       let _ = Printf.printf "->CNC: %s\n%!" msg in
       let msg = msg ^ "\n" in
-      enqueue_str t msg;
+      external_request t (fun rs -> enqueue_str rs msg);
       t.line <- t.line + 1 ),
      HandlerLine handle_response
     )
