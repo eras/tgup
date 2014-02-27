@@ -533,6 +533,40 @@ let start_upload_program program cnc =
   loop ();
   o
 
+let setup_upload upload_widget env =
+  let run_callback () =
+    match !(env#gcode), env#cnc with
+    | Some gcode, Some cnc ->
+      upload_widget#set_running true;
+      env#cnc_control#set_enabled false;
+      let gcode' = GcodeMapper.transform !(env#gcode_to_tool) env#cnc_control#get_reference_z (List.enum gcode) in
+      let upload = start_upload_program gcode' cnc in
+      let status_report_hook = Hook.hook (Cnc.status_report_tinyg cnc) (
+        fun status -> env#cnc_control#set_position (v3_of_status_tinyg status)
+      ) in
+      upload#finished#add_persistent_callback (
+	function `Failure | `Success ->
+	  Cnc.async cnc (Cnc.wait_status_tinyg @@ fun status ->
+	    Printf.printf "Evaluating %d\n%!" status.stat;
+	    match status.stat with
+	    | 3 -> Some ()
+	    | _ -> None
+	  ) (function _ ->
+	    Printf.printf "Program upload complete!\n%!";
+            Hook.unhook status_report_hook;
+	    upload_widget#set_running false;
+	    env#cnc_control#set_enabled true
+	  )
+      );
+      ()
+    | _ -> ()
+  in
+  let abort_callback () =
+    Cnc.ignore (Option.get env#cnc) Cnc.flush_queue
+  in
+  upload_widget#run_button_connect run_callback;
+  upload_widget#abort_button_connect abort_callback
+
 let gui sigint_triggered config camera_matrix_arg (tool_camera_offset : Gg.V2.t option) gcode_filename video_device =
   let accel_group = GtkData.AccelGroup.create () in
   let video = 
@@ -587,8 +621,9 @@ let gui sigint_triggered config camera_matrix_arg (tool_camera_offset : Gg.V2.t 
     method info		   = info
     method video	   = video
     method cnc_control	   = cnc_control
+    method cnc             = cnc
     method gcode	   = gcode
-    method gcode_to_tool    = gcode_to_tool
+    method gcode_to_tool   = gcode_to_tool
   end in
   let set_coord_mode coord_mode =
     cnc_control#set_coord_mode coord_mode;
@@ -633,38 +668,7 @@ let gui sigint_triggered config camera_matrix_arg (tool_camera_offset : Gg.V2.t 
   in
   let _ =
     let upload_widget = upload_button ~packing:control_box#pack () in
-    let run_callback () =
-      match !(env#gcode), cnc with
-      | Some gcode, Some cnc ->
-	upload_widget#set_running true;
-	cnc_control#set_enabled false;
-        let gcode' = GcodeMapper.transform !(env#gcode_to_tool) cnc_control#get_reference_z (List.enum gcode) in
-	let upload = start_upload_program gcode' cnc in
-        let status_report_hook = Hook.hook (Cnc.status_report_tinyg cnc) (
-          fun status -> cnc_control#set_position (v3_of_status_tinyg status)
-        ) in
-	upload#finished#add_persistent_callback (
-	  function `Failure | `Success ->
-	    Cnc.async cnc (Cnc.wait_status_tinyg @@ fun status ->
-	      Printf.printf "Evaluating %d\n%!" status.stat;
-	      match status.stat with
-	      | 3 -> Some ()
-	      | _ -> None
-	    ) (function _ ->
-	      Printf.printf "Program upload complete!\n%!";
-              Hook.unhook status_report_hook;
-	      upload_widget#set_running false;
-	      cnc_control#set_enabled true
-	    )
-	);
-	()
-      | _ -> ()
-    in
-    let abort_callback () =
-      Cnc.ignore (Option.get cnc) Cnc.flush_queue
-    in
-    upload_widget#run_button_connect run_callback;
-    upload_widget#abort_button_connect abort_callback;
+    setup_upload upload_widget env
   in
   ignore (Hook.hook liveview#on_mouse_move (show_location env));
   image_updater env ();
