@@ -478,6 +478,33 @@ let json_response (respond : Json.json option result -> unit) =
 let home axis =
   send_gcode ("G28 " ^ String.concat " " (List.map (fun axis -> name_of_axis axis ^ "0") axis)) unit_response
 
+let wait_status_tinyg predicate =
+  let future = new Future.t in
+  let hook_id = ref None in
+  let evaluate ret status =
+    match predicate status with
+    | None -> ret false
+    | Some status ->
+      (fun x -> ignore (future#set_if_unset x)) (ResultOK status);
+      Option.may Hook.unhook !hook_id;
+      ret true
+  in
+  fun () ->
+    ((fun t ->
+      external_request t (fun internal_state ->
+        let setup_hook () =
+          hook_id := Some (Hook.hook t.status_report_tinyg (evaluate (const ())))
+        in
+        match !(internal_state.status_tinyg) with
+        | None -> setup_hook ()
+        | Some status ->
+          if not (evaluate identity status)
+          then setup_hook()
+      );
+     ),
+     HandlerFuture future
+    )
+
 let set_step_speed speed = send_gcode ("G1 F" ^ string_of_float speed) unit_response
 
 let string_of_axis axis =

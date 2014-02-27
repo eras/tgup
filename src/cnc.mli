@@ -64,6 +64,9 @@ val status_report_tinyg : t -> status_tinyg Hook.t
 (** Marlin: [where] requests the position *)
 val where : (float * float * float) request
 
+(** Waits until the evaluation function returns a value. *)
+val wait_status_tinyg : (status_tinyg -> 'a option) -> 'a request
+
 (** TinyG: [status_tinyg] requests the status information from TinyG (along with the position) *)
 val status_tinyg : status_tinyg request
 
