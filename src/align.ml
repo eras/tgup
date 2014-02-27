@@ -29,6 +29,8 @@ let v3_of_v2 v3 =
 
 let v2_of_status_tinyg status = Cnc.(Gg.V2.v status.x status.y)
 
+let v3_of_status_tinyg status = Cnc.(Gg.V3.v status.x status.y status.z)
+
 let flip_y (a, b) = (a, ~-. b)
 
 let angle_of_matrix m3 = Gg.(V2.angle (V2.tr m3 (V2.v 1.0 0.0)))
@@ -637,6 +639,9 @@ let gui sigint_triggered config camera_matrix_arg (tool_camera_offset : Gg.V2.t 
 	upload_widget#set_running true;
 	cnc_control#set_enabled false;
 	let upload = start_upload_program (List.enum gcode) cnc in
+        let status_report_hook = Hook.hook (Cnc.status_report_tinyg cnc) (
+          fun status -> cnc_control#set_position (v3_of_status_tinyg status)
+        ) in
 	upload#finished#add_persistent_callback (
 	  function `Failure | `Success ->
 	    Cnc.async cnc (Cnc.wait_status_tinyg @@ fun status ->
@@ -646,6 +651,7 @@ let gui sigint_triggered config camera_matrix_arg (tool_camera_offset : Gg.V2.t 
 	      | _ -> None
 	    ) (function _ ->
 	      Printf.printf "Program upload complete!\n%!";
+              Hook.unhook status_report_hook;
 	      upload_widget#set_running false;
 	      cnc_control#set_enabled true
 	    )
