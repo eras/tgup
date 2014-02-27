@@ -527,7 +527,7 @@ let flush_queue : unit request =
   | ResultOK () -> ()
   | ResultDequeued -> ()
   );
-  send_raw_noresponse "!%" future
+  send_flush future
 
 let raw_gcode str = send_gcode str unit_response
 
