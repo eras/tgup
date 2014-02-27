@@ -276,16 +276,7 @@ let render_grid cairo world_to_camera (x0, x1, y0, y1) =
 let draw_overlay env liveview_context =
   let cairo = liveview_context#cairo in
   let open Cairo in
-  set_source_rgba cairo 0.0 1.0 0.0 0.5;
-  arc cairo 0.0 0.0 20.0 0.0 pi2;
-  fill cairo;
-  set_source_rgba cairo 1.0 0.0 0.0 0.5;
-  ( flip List.iter !(env#points) @@ fun ((xy), _) ->
-    let (x, y) = Gg.(V2.to_tuple @@ P2.tr !(env#point_mapping) xy) in
-    (* Printf.printf "Resulting point: %f, %f\n%!" x y; *)
-    arc cairo x y 10.0 0.0 pi2;
-    fill cairo );
-  match !(env#camera_to_world) with
+  ( match !(env#camera_to_world) with
   | None -> ()
   | Some camera_to_world ->
     let world_to_camera = Gg.M3.inv camera_to_world in
@@ -293,7 +284,15 @@ let draw_overlay env liveview_context =
     let tool_mapping = Gg.M3.move (Gg.V2.neg env#cnc_control#get_viewport_position) in
     render_grid cairo (tool_mapping *|| world_to_camera) liveview_context#bounds;
     let matrix = world_to_camera *| tool_mapping *| !(env#gcode_to_tool) in
-    Option.may (render_gcode cairo matrix) !(env#gcode)
+    Option.may (render_gcode cairo matrix) !(env#gcode) );
+  ( set_source_rgba cairo 0.0 1.0 0.0 0.5;
+    arc cairo 0.0 0.0 20.0 0.0 pi2;
+    fill cairo;
+    flip List.iter !(env#points) @@ fun ((xy), _) ->
+      let (x, y) = Gg.(V2.to_tuple @@ P2.tr !(env#point_mapping) xy) in
+    (* Printf.printf "Resulting point: %f, %f\n%!" x y; *)
+      arc cairo x y 10.0 0.0 pi2;
+      fill cairo )
 
 let move_tool env cam_xy camera_to_world =
   (* Move the most recently clicked point over the center *)
