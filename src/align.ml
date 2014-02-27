@@ -638,7 +638,8 @@ let gui sigint_triggered config camera_matrix_arg (tool_camera_offset : Gg.V2.t 
       | Some gcode, Some cnc ->
 	upload_widget#set_running true;
 	cnc_control#set_enabled false;
-	let upload = start_upload_program (List.enum gcode) cnc in
+        let gcode' = GcodeMapper.transform !(env#gcode_to_tool) cnc_control#get_reference_z (List.enum gcode) in
+	let upload = start_upload_program gcode' cnc in
         let status_report_hook = Hook.hook (Cnc.status_report_tinyg cnc) (
           fun status -> cnc_control#set_position (v3_of_status_tinyg status)
         ) in
