@@ -639,16 +639,22 @@ let gui sigint_triggered config camera_matrix_arg (tool_camera_offset : Gg.V2.t 
 	let upload = start_upload_program (List.enum gcode) cnc in
 	upload#finished#add_persistent_callback (
 	  function `Failure | `Success ->
-	    upload_widget#set_running false;
-	    cnc_control#set_enabled true
+	    Cnc.async cnc (Cnc.wait_status_tinyg @@ fun status ->
+	      Printf.printf "Evaluating %d\n%!" status.stat;
+	      match status.stat with
+	      | 3 -> Some ()
+	      | _ -> None
+	    ) (function _ ->
+	      Printf.printf "Program upload complete!\n%!";
+	      upload_widget#set_running false;
+	      cnc_control#set_enabled true
+	    )
 	);
 	()
       | _ -> ()
     in
     let abort_callback () =
-      upload_widget#set_running false;
-      cnc_control#set_enabled true;
-      ()
+      Cnc.ignore (Option.get cnc) Cnc.flush_queue
     in
     upload_widget#run_button_connect run_callback;
     upload_widget#abort_button_connect abort_callback;
