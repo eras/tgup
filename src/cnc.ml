@@ -396,7 +396,8 @@ let send_raw_noresponse str future : unit request =
     ((fun t ->
       external_request t (fun rs ->
         enqueue_str rs str;
-        enqueue_notify rs (unit_of_request_finish_state future#set))
+        (* TODO: why does this need to use set_if_unset?! *)
+        enqueue_notify rs (unit_of_request_finish_state (fun x -> ignore (future#set_if_unset x))))
      ),
      HandlerFuture future
     )
@@ -407,7 +408,8 @@ let send_flush future : unit request =
       external_request t (fun rs -> 
         enqueue_flush rs;
         enqueue_str rs "!%";
-        enqueue_notify rs (unit_of_request_finish_state future#set);
+        (* TODO: why does this need to use set_if_unset?! *)
+        enqueue_notify rs (unit_of_request_finish_state (fun x -> ignore (future#set_if_unset x)));
       )
      ),
      HandlerFuture future
