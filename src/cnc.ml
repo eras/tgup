@@ -34,6 +34,7 @@ type status_tinyg = {
   coor : int;
   dist : int;
   momo : int;
+  stat : int;
 }
 
 let xon = Char.chr 17
@@ -97,13 +98,14 @@ module ParseStatusTinyG = struct
     let coor = sr +> "coor" in
     let dist = sr +> "dist" in
     let momo = sr +> "momo" in
-    (x, y, z, feed, vel, coor, dist, momo)
+    let stat = sr +> "stat" in
+    (x, y, z, feed, vel, coor, dist, momo, stat)
 end
 
 let parse_status_tinyg sr =
   let open Json in
   let open ParseStatusTinyG in
-  let (x, y, z, feed, vel, coor, dist, momo) = get sr in
+  let (x, y, z, feed, vel, coor, dist, momo, stat) = get sr in
   let f = function
     | None -> assert false
     | Some x -> get_float x
@@ -112,14 +114,14 @@ let parse_status_tinyg sr =
     | None -> assert false
     | Some x -> get_int x
   in
-  if List.mem None [x; y; z; feed; vel; coor; dist; momo]
+  if List.mem None [x; y; z; feed; vel; coor; dist; momo; stat]
   then failwith ("Failed to retrieve TinYG location from " ^ to_string (Option.get sr))
-  else { x = f x; y = f y; z = f z; feed = f feed; vel = f vel; coor = i coor; dist = i dist; momo = i momo }
+  else { x = f x; y = f y; z = f z; feed = f feed; vel = f vel; coor = i coor; dist = i dist; momo = i momo; stat = i stat; }
 
 let updated_status_tinyg status sr =
   let open Json in
   let open ParseStatusTinyG in
-  let (x, y, z, feed, vel, coor, dist, momo) = get sr in
+  let (x, y, z, feed, vel, coor, dist, momo, stat) = get sr in
   let f default = function
     | None -> default
     | Some x -> get_float x
@@ -135,7 +137,8 @@ let updated_status_tinyg status sr =
     vel	 = f status.vel vel;
     coor = i status.coor coor;
     dist = i status.dist dist;
-    momo = i status.momo momo }  
+    momo = i status.momo momo;
+    stat = i status.stat stat }
 
 let process_sr internal_state sr =
   match !(internal_state.status_tinyg) with

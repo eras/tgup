@@ -9,6 +9,7 @@ type status_tinyg = {
   coor : int;				(* coordinate system, 1 being the default *)
   dist : int;				(* distance mode, 1 meaning absolute and 2 relative *)
   momo : int;				(* machine motion mode, 0 meaning "Stop" *)
+  stat : int;				(* status? 3 means program finished (no pending operations). *)
 }
 
 type t
