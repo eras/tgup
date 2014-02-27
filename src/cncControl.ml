@@ -4,6 +4,8 @@ type coord_mode =
 | CoordModeTool
 | CoordModeCamera
 
+let movement_limit = false
+
 let view ~packing cnc () =
   let with_cnc f =
     match cnc with
@@ -40,8 +42,10 @@ let view ~packing cnc () =
     cnc_y := !cnc_y +. y_ofs;
     Hook.issue position_adjust_callback (Gg.V3.v x_ofs y_ofs 0.0);
     with_cnc @@ fun cnc ->
-      assert (abs_float x_ofs < 5.0);
-      assert (abs_float y_ofs < 5.0);
+      if movement_limit then (
+        assert (abs_float x_ofs < 5.0);
+        assert (abs_float y_ofs < 5.0);
+      );
       Cnc.wait cnc (Cnc.set_feed_rate 100.0);
       Cnc.wait cnc Cnc.set_relative;
       Cnc.ignore cnc (Cnc.travel [`X x_ofs; `Y y_ofs])
