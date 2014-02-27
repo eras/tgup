@@ -497,9 +497,20 @@ let gcode_transformer ~packing ~callback () =
   let save_button = GButton.button ~label:"Save" ~packing () in
   save_button#connect#clicked ~callback
 
-let upload_button ~packing ~callback () =
-  let button = GButton.button ~label:"Run CNC job" ~packing () in
-  button#connect#clicked ~callback
+let upload_button ~packing () =
+  let run_button = GButton.button ~label:"Run CNC job" ~packing () in
+  let abort_button = GButton.button ~label:"ABORT" ~packing () in
+  abort_button#misc#set_sensitive false;
+  let o = object
+      method run_button_connect callback = run_button#connect#clicked ~callback
+      method abort_button_connect callback = abort_button#connect#clicked ~callback
+      method set_running running = 
+	let enable_run = not running in
+	let enable_abort = running in 
+	run_button#misc#set_sensitive enable_run;
+	abort_button#misc#set_sensitive enable_abort;
+  end in
+  o
 
 let start_upload_program program cnc =
   let strings = Enum.map Gcode.Evaluate.string_of_step_result program in
@@ -619,16 +630,28 @@ let gui sigint_triggered config camera_matrix_arg (tool_camera_offset : Gg.V2.t 
     gcode_transformer ~packing:control_box#pack ~callback ();
   in
   let _ =
-    let callback () =
+    let upload_widget = upload_button ~packing:control_box#pack () in
+    let run_callback () =
       match !(env#gcode), cnc with
       | Some gcode, Some cnc ->
+	upload_widget#set_running true;
 	cnc_control#set_enabled false;
 	let upload = start_upload_program (List.enum gcode) cnc in
-	upload#finished#add_persistent_callback (function `Failure | `Success -> cnc_control#set_enabled true);
+	upload#finished#add_persistent_callback (
+	  function `Failure | `Success ->
+	    upload_widget#set_running false;
+	    cnc_control#set_enabled true
+	);
 	()
       | _ -> ()
     in
-    upload_button ~packing:control_box#pack ~callback ();
+    let abort_callback () =
+      upload_widget#set_running false;
+      cnc_control#set_enabled true;
+      ()
+    in
+    upload_widget#run_button_connect run_callback;
+    upload_widget#abort_button_connect abort_callback;
   in
   ignore (Hook.hook liveview#on_mouse_move (show_location env));
   image_updater env ();
