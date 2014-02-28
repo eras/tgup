@@ -565,6 +565,26 @@ let setup_upload upload_widget env =
   upload_widget#run_button_connect run_callback;
   upload_widget#abort_button_connect abort_callback
 
+let level_store_widget name ~packing ~env () =
+  let hbox = GPack.hbox ~packing () in
+  let level = ref None in
+  let store_button = GButton.button ~packing:hbox#pack ~label:("Store " ^ name) () in
+  let restore_button = GButton.button ~packing:hbox#pack ~label:("Restore " ^ name) () in
+  let label = GMisc.label ~packing:hbox#pack () in
+  restore_button#misc#set_sensitive false;
+  ignore (store_button#connect#clicked ~callback:(fun () ->
+    let level' = Gg.V3.z env#cnc_control#get_position in
+    level := Some level';
+    restore_button#misc#set_sensitive true;
+    Printf.ksprintf label#set_text "z=%.4f" level'
+  ));
+  ignore (restore_button#connect#clicked ~callback:(fun () ->
+    let level = Option.get !level in
+    let current_level = Gg.V3.z env#cnc_control#get_position in
+    env#cnc_control#adjust_z (level -. current_level)
+  ));
+  ()
+
 let gui sigint_triggered config camera_matrix_arg (tool_camera_offset : Gg.V2.t option) gcode_filename video_device =
   let accel_group = GtkData.AccelGroup.create () in
   let video = 
@@ -668,6 +688,8 @@ let gui sigint_triggered config camera_matrix_arg (tool_camera_offset : Gg.V2.t 
     let upload_widget = upload_button ~packing:control_box#pack () in
     setup_upload upload_widget env
   in
+  level_store_widget "camera" ~packing:control_box#pack ~env ();
+  level_store_widget "tool" ~packing:control_box#pack ~env ();
   ignore (Hook.hook liveview#on_mouse_move (show_location env));
   image_updater env ();
   main_window#show ();
