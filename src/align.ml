@@ -497,16 +497,20 @@ let gcode_transformer ~packing ~callback () =
   let save_button = GButton.button ~label:"Save" ~packing () in
   save_button#connect#clicked ~callback
 
-let upload_button ~packing () =
+let upload_widget ~packing () =
   let run_button = GButton.button ~label:"Run CNC job" ~packing () in
   let abort_button = GButton.button ~label:"ABORT" ~packing () in
+  let progress = GRange.progress_bar ~packing ~show:false () in
   abort_button#misc#set_sensitive false;
   let o = object
       method run_button_connect callback = run_button#connect#clicked ~callback
       method abort_button_connect callback = abort_button#connect#clicked ~callback
+      method set_progress fraction = progress#set_fraction fraction
       method set_running running = 
+        let enable_progress = running in
 	let enable_run = not running in
 	let enable_abort = running in 
+        if enable_progress then progress#misc#show() else progress#misc#hide ();
 	run_button#misc#set_sensitive enable_run;
 	abort_button#misc#set_sensitive enable_abort;
   end in
@@ -538,9 +542,12 @@ let setup_upload upload_widget env =
       upload_widget#set_running true;
       env#cnc_control#set_enabled false;
       let gcode' = GcodeMapper.transform !(env#gcode_to_tool) env#cnc_control#get_reference_z (List.enum gcode) in
+      let num_lines = List.length (List.of_enum gcode') in
       let upload = start_upload_program gcode' cnc in
       let status_report_hook = Hook.hook (Cnc.status_report_tinyg cnc) (
-        fun status -> env#cnc_control#set_position (v3_of_status_tinyg status)
+        fun status ->
+          env#cnc_control#set_position (v3_of_status_tinyg status);
+          upload_widget#set_progress (float status.line /. float num_lines);
       ) in
       upload#finished#add_persistent_callback (
 	function `Failure | `Success ->
@@ -665,7 +672,7 @@ let gui sigint_triggered config camera_matrix_arg (tool_camera_offset : Gg.V2.t 
     gcode_transformer ~packing:control_box#pack ~callback ();
   in
   let _ =
-    let upload_widget = upload_button ~packing:control_box#pack () in
+    let upload_widget = upload_widget ~packing:control_box#pack () in
     setup_upload upload_widget env
   in
   ignore (Hook.hook liveview#on_mouse_move (show_location env));
