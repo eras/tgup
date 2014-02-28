@@ -1,5 +1,5 @@
 <*>: package(batteries), thread, package(cmdliner), package(yojson), package(pcre), package(ANSITerminal), package(v4l2), package(gg)
 <*>: debug, annot
 <*>: no_warn_40
-<cncControl.*>: package(lablgtk2)
+<cncControl.*> or <widgets.*>: package(lablgtk2)
 <utils.*> or <align.*> or <liveView.*> or <main.*>: package(lablgtk2), package(lablgtk2.auto-init), package(cairo2), package(cairo2.lablgtk2)
