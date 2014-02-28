@@ -56,15 +56,18 @@ let view ~packing cnc () =
     let y_ofs = float y_dir *. length in
     move_by x_ofs y_ofs
   in
-  let move_z z_dir _ =
-    let length = float_of_string (z_travel_length#entry#text) in
-    let z_ofs = float z_dir *. length in
+  let move_z_by z_ofs =
     cnc_z := !cnc_z +. z_ofs;
     Hook.issue position_adjust_callback (Gg.V3.v 0.0 0.0 z_ofs);
     with_cnc @@ fun cnc ->
       Cnc.wait cnc (Cnc.set_feed_rate 100.0);
       Cnc.wait cnc Cnc.set_relative;
       Cnc.ignore cnc (Cnc.travel [`Z z_ofs])
+  in
+  let move_z z_dir _ =
+    let length = float_of_string (z_travel_length#entry#text) in
+    let z_ofs = float z_dir *. length in
+    move_z_by z_ofs
   in
   let reset_z _ = reference_z := !cnc_z in
   let elements = ref [] in
@@ -110,6 +113,7 @@ let view ~packing cnc () =
     method get_position = Gg.V3.v !cnc_x !cnc_y (!cnc_z -. !reference_z)
     method get_viewport_position = Gg.V2.add (Gg.V2.v !cnc_x !cnc_y) (coord_mode_offset !coord_mode)
     method adjust_position xy = move_by (Gg.V2.x xy) (Gg.V2.y xy)
+    method adjust_z z = move_z_by z
     method position_adjust_callback = position_adjust_callback
 
     (* set position without moving *)
