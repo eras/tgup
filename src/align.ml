@@ -505,7 +505,9 @@ let upload_widget ~packing () =
   let o = object
       method run_button_connect callback = run_button#connect#clicked ~callback
       method abort_button_connect callback = abort_button#connect#clicked ~callback
-      method set_progress fraction = progress#set_fraction fraction
+      method set_progress fraction text =
+        progress#set_fraction fraction;
+        progress#set_text text
       method set_running running = 
         let enable_progress = running in
 	let enable_run = not running in
@@ -517,19 +519,25 @@ let upload_widget ~packing () =
   o
 
 let start_upload_program program cnc =
-  let strings = Enum.map Gcode.Evaluate.string_of_step_result program in
+  let strings =
+    flip Enum.map program @@ fun (sr : Gcode.Evaluate.step_result) ->
+      (sr.sr_state1.ms_orig_line_number, Gcode.Evaluate.string_of_step_result sr) in
+  let line_sent = Hook.create () in
   let o = 
     let finished = new Future.t in
     ( object
       method finished = finished
+      method line_sent = line_sent
       end )
   in
   let rec loop () =
     match Enum.get strings with
     | None -> o#finished#set `Success
-    | Some str ->
+    | Some (orig_line_nuber, str) ->
       Cnc.async cnc (Cnc.raw_gcode str) @@ function 
-	| ResultOK () -> loop ()
+	| ResultOK () ->
+          Hook.issue line_sent orig_line_nuber;
+          loop ()
 	| ResultDequeued -> o#finished#set `Failure
   in
   loop ();
@@ -547,7 +555,9 @@ let setup_upload upload_widget env =
       let status_report_hook = Hook.hook (Cnc.status_report_tinyg cnc) (
         fun status ->
           env#cnc_control#set_position (v3_of_status_tinyg status);
-          upload_widget#set_progress (float status.line /. float num_lines);
+          upload_widget#set_progress
+            (float status.line /. float num_lines)
+            (Printf.sprintf "Line %d" status.line);
       ) in
       upload#finished#add_persistent_callback (
 	function `Failure | `Success ->
