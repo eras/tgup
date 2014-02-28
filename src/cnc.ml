@@ -194,7 +194,7 @@ let process_json internal_state handler str =
   match response_kind with
   | `None ->
     (* don't handle these at the moment *) 
-    Printf.fprintf stderr "Cnc.reader.loop.process_json: cannot parse %s\n%!" str;
+    Printf.fprintf stderr "Cnc.reader.loop.process_json: cannot parse %s (json: %s, r? %b sr? %b qr? %b)\n%!" str (match json with None -> "invalid" | Some json -> to_string json) (json +> "r" <> None) (json +> "sr" <> None) (json +> "qr" <> None);
     handler
   | `SR sr ->
     process_sr internal_state (Some sr);
