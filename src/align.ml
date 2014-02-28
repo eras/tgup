@@ -668,8 +668,6 @@ let gui sigint_triggered config camera_matrix_arg (tool_camera_offset : Gg.V2.t 
     let upload_widget = upload_button ~packing:control_box#pack () in
     setup_upload upload_widget env
   in
-  Widgets.level_store_widget "camera" ~packing:control_box#pack ~env ();
-  Widgets.level_store_widget "tool" ~packing:control_box#pack ~env ();
   ignore (Hook.hook liveview#on_mouse_move (show_location env));
   image_updater env ();
   main_window#show ();
