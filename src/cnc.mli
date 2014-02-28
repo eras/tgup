@@ -10,6 +10,7 @@ type status_tinyg = {
   dist : int;				(* distance mode, 1 meaning absolute and 2 relative *)
   momo : int;				(* machine motion mode, 0 meaning "Stop" *)
   stat : int;				(* status? 3 means program finished (no pending operations). *)
+  line : int;				(* line number *)
 }
 
 type t
