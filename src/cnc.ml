@@ -67,7 +67,6 @@ type ext_requests = (internal_state -> unit) Queue.t Protect.t
 
 type t = { 
   fd			      : Unix.file_descr;
-  mutable line		      : int;
   receiver		      : io_thread_state Protect.t;
   status_report_tinyg	      : status_tinyg Hook.t;
 
@@ -357,7 +356,6 @@ let connect device bps =
   let (control_read, control_write) = Unix.pipe () in
   let _ = Thread.create io_thread (control_read, fd, receiver, ext_requests) in
     { fd;
-      line	      = 1;
       receiver;
       control_write;
       status_report_tinyg;
@@ -418,20 +416,18 @@ let send_flush future : unit request =
      HandlerFuture future
     )
 
-let send_str mk_msg (handle_response : (('a result -> unit) -> (unit -> handler_bottomend))) : 'a request =
+let send_str msg (handle_response : (('a result -> unit) -> (unit -> handler_bottomend))) : 'a request =
   fun () ->
     (( fun t ->
-      let msg = mk_msg t.line in
       let _ = Printf.printf "->CNC: %s\n%!" msg in
       let msg = msg ^ "\n" in
-      external_request t (fun rs -> enqueue_str rs msg);
-      t.line <- t.line + 1 ),
+      external_request t (fun rs -> enqueue_str rs msg) ),
      HandlerLine handle_response
     )
 
 let not1 f x = not (f x)
 
-let send_json msg = send_str @@ fun line ->
+let send_json msg = send_str (
   let open Json in
   let msg : json =
     (* annotate "gc", if it exists, with a line number *)
@@ -440,11 +436,11 @@ let send_json msg = send_str @@ fun line ->
     | `Assoc xs when List.exists has_gc xs ->
       let (_, gc) = (List.find has_gc xs) in
       let gc = get_string gc in
-      let gc = Printf.sprintf "N%d %s" line gc in
       `Assoc (("gc", `String gc)::List.filter (not1 has_gc) xs)
     | _ -> msg
   in
   Json.to_string msg
+)
 
 let send_gcode msg = send_json (`Assoc ["gc", `String msg])
 
