@@ -276,15 +276,17 @@ let render_grid cairo world_to_camera (x0, x1, y0, y1) =
 let draw_overlay env liveview_context =
   let cairo = liveview_context#cairo in
   let open Cairo in
+  let post_render =
   ( match !(env#camera_to_world) with
-  | None -> ()
+  | None -> ignore
   | Some camera_to_world ->
     let world_to_camera = Gg.M3.inv camera_to_world in
     let open Utils.Matrix in
     let tool_mapping = Gg.M3.move (Gg.V2.neg env#cnc_control#get_viewport_position) in
-    render_grid cairo (tool_mapping *|| world_to_camera) liveview_context#bounds;
     let matrix = world_to_camera *| tool_mapping *| !(env#gcode_to_tool) in
-    Option.may (render_gcode cairo matrix) !(env#gcode) );
+    Option.may (render_gcode cairo matrix) !(env#gcode);
+    fun () -> render_grid cairo (tool_mapping *|| world_to_camera) liveview_context#bounds
+  ) in
   ( set_source_rgba cairo 0.0 1.0 0.0 0.5;
     arc cairo 0.0 0.0 20.0 0.0 pi2;
     fill cairo;
@@ -292,7 +294,8 @@ let draw_overlay env liveview_context =
       let (x, y) = Gg.(V2.to_tuple @@ P2.tr !(env#point_mapping) xy) in
     (* Printf.printf "Resulting point: %f, %f\n%!" x y; *)
       arc cairo x y 10.0 0.0 pi2;
-      fill cairo )
+      fill cairo );
+  post_render ()
 
 let move_tool env cam_xy camera_to_world =
   (* Move the most recently clicked point over the center *)
