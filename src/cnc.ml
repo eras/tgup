@@ -178,11 +178,27 @@ let process_r internal_state handler r =
     None
   )
 
+let discard_char char str =
+  if not (String.contains str char)
+  then str
+  else (
+    let strq = ref [] in
+    for c = 0 to String.length str - 1 do
+      match str.[c] with
+      | x when x = char -> ()
+      | x -> strq := x::!strq
+    done;
+    String.of_list (List.rev !strq)
+  )
+
 let process_json internal_state handler str =
   let open Json in
+  let str = discard_char '\000' str in
   let json =
     try Some (from_string str)
-    with _ -> None
+    with exn -> 
+      Printf.printf "Error while parsing json: %s\n%!" (Printexc.to_string exn);
+      None
   in
   let response_kind = 
     match json +> "r", json +> "sr", json +> "qr" with
