@@ -1,9 +1,9 @@
 open Batteries
 open Gtk
 
-let level_store_widget name ~packing ~env () =
+let level_store_widget ?store name ~packing ~env () =
   let hbox = GPack.hbox ~packing () in
-  let level = ref None in
+  let level = Option.default (ref None) store in
   let store_button = GButton.button ~packing:hbox#pack ~label:("Store " ^ name) () in
   let restore_button = GButton.button ~packing:hbox#pack ~label:("Restore " ^ name) () in
   let label = GMisc.label ~packing:hbox#pack () in
