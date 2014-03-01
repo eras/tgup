@@ -3,6 +3,7 @@ B _build
 B _build/OCamlGcode
 B _build/src
 B ocamlfind/v4l2
+B +threads
 FLG -w -40
 PKG batteries
 PKG cmdliner
