@@ -29,7 +29,6 @@ let view ~packing cnc () =
   let cnc_x = ref 0.0 in
   let cnc_y = ref 0.0 in
   let cnc_z = ref 0.0 in
-  let reference_z = ref 0.0 in          (* virtual zero-level *)
   let position_adjust_callback = Hook.create () in
   let coord_mode = ref CoordModeTool in
   let camera_offset = ref (Gg.V2.v 0.0 0.0) in
@@ -69,7 +68,6 @@ let view ~packing cnc () =
     let z_ofs = float z_dir *. length in
     move_z_by z_ofs
   in
-  let reset_z _ = reference_z := !cnc_z in
   let elements = ref [] in
   let add e = elements := e::!elements; e in
   ignore ((add @@ GButton.button ~label:"Y+" ~packing:(directionals#attach ~left:1 ~top:0) ())#connect#clicked (move (0) (1)));
@@ -78,7 +76,6 @@ let view ~packing cnc () =
   ignore ((add @@ GButton.button ~label:"X-" ~packing:(directionals#attach ~left:0 ~top:1) ())#connect#clicked (move (-1) (0)));
   ignore ((add @@ GButton.button ~label:"Z+" ~packing:(z_controls_box#attach ~left:0 ~top:0) ())#connect#clicked (move_z (1)));
   ignore ((add @@ GButton.button ~label:"Z-" ~packing:(z_controls_box#attach ~left:0 ~top:1) ())#connect#clicked (move_z (-1)));
-  ignore ((add @@ GButton.button ~label:"Reset Z" ~packing:(z_controls_box#attach ~left:0 ~top:2) ())#connect#clicked reset_z);
   let handle_tinyg_report (report : Cnc.status_tinyg) = 
     info#set_label (
       let (x, y) = Gg.V2.to_tuple (Gg.V2.sub (Gg.V2.v report.x report.y) (coord_mode_offset !coord_mode)) in
@@ -109,17 +106,18 @@ let view ~packing cnc () =
       (fun el -> el#misc#set_sensitive mode)
       !elements
   in
+  let tool_level = ref None in
   let o = object 
-    method get_position = Gg.V3.v !cnc_x !cnc_y (!cnc_z -. !reference_z)
+    method get_position = Gg.V3.v !cnc_x !cnc_y !cnc_z
     method get_viewport_position = Gg.V2.add (Gg.V2.v !cnc_x !cnc_y) (coord_mode_offset !coord_mode)
     method adjust_position xy = move_by (Gg.V2.x xy) (Gg.V2.y xy)
     method adjust_z z = move_z_by z
     method position_adjust_callback = position_adjust_callback
 
-  (* set position without moving *)
-    method set_position v3 = Gg.V3.(cnc_x := x v3; cnc_y := y v3; cnc_z := z v3 +. !reference_z)
+    method get_tool_level = !tool_level
 
-    method get_reference_z = !reference_z
+  (* set position without moving *)
+    method set_position v3 = Gg.V3.(cnc_x := x v3; cnc_y := y v3; cnc_z := z v3)
 
     method current_coord_of_position pos = Gg.V2.add pos (coord_mode_offset !coord_mode)
     method get_coord_mode = !coord_mode
@@ -138,5 +136,5 @@ let view ~packing cnc () =
     method cnc_control = o
   end in
   Widgets.level_store_widget "camera" ~packing:vbox#pack ~env ();
-  Widgets.level_store_widget "tool" ~packing:vbox#pack ~env ();
+  Widgets.level_store_widget ~store:tool_level "tool" ~packing:vbox#pack ~env ();
   o

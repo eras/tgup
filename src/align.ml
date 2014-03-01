@@ -552,7 +552,7 @@ let setup_upload upload_widget env =
     | Some gcode, Some cnc ->
       upload_widget#set_running true;
       env#cnc_control#set_enabled false;
-      let gcode' = GcodeMapper.transform !(env#gcode_to_tool) env#cnc_control#get_reference_z (List.enum gcode) in
+      let gcode' = GcodeMapper.transform !(env#gcode_to_tool) (Option.default 0.0 env#cnc_control#get_tool_level) (List.enum gcode) in
       let num_lines = List.length (List.of_enum gcode') in
       let upload = start_upload_program gcode' cnc in
       let status_report_hook = Hook.hook (Cnc.status_report_tinyg cnc) (
@@ -679,7 +679,7 @@ let gui sigint_triggered config camera_matrix_arg (tool_camera_offset : Gg.V2.t 
     let callback () =
       match !(env#gcode) with
       | Some gcode ->
-	gcode_transform gcode !(env#gcode_to_tool) cnc_control#get_reference_z "transformed.gcode"
+	gcode_transform gcode !(env#gcode_to_tool) (Option.default 0.0 cnc_control#get_tool_level) "transformed.gcode"
       | _ -> ()
     in
     gcode_transformer ~packing:control_box#pack ~callback ();
