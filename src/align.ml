@@ -556,13 +556,18 @@ let setup_upload upload_widget env =
       upload_widget#set_running true;
       env#cnc_control#set_enabled false;
       let gcode' = List.of_enum @@ GcodeMapper.transform !(env#gcode_to_tool) (Option.default 0.0 env#cnc_control#get_tool_level) (List.enum gcode) in
-      let num_lines = List.length gcode' in
+      let last_line =
+        let num_lines = List.length gcode' in
+        if num_lines = 0
+        then 1
+        else (List.nth gcode' (num_lines - 1)).sr_state1.ms_orig_line_number
+      in
       let upload = start_upload_program (List.enum gcode') cnc in
       let status_report_hook = Hook.hook (Cnc.status_report_tinyg cnc) (
         fun status ->
           env#cnc_control#set_position (v3_of_status_tinyg status);
           upload_widget#set_progress
-            (float status.line /. float num_lines)
+            (float status.line /. float last_line)
             (Printf.sprintf "Line %d" status.line);
       ) in
       upload#finished#add_persistent_callback (
