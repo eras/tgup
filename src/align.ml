@@ -503,11 +503,13 @@ let gcode_transformer ~packing ~callback () =
 let upload_widget ~packing () =
   let run_button = GButton.button ~label:"Run CNC job" ~packing () in
   let abort_button = GButton.button ~label:"ABORT" ~packing () in
+  let abort_info = GMisc.label ~packing () in
   let progress = GRange.progress_bar ~packing ~show:false () in
   abort_button#misc#set_sensitive false;
   let o = object
       method run_button_connect callback = run_button#connect#clicked ~callback
       method abort_button_connect callback = abort_button#connect#clicked ~callback
+      method set_abort_text text = abort_info#set_text text
       method set_progress fraction text =
         progress#set_fraction fraction;
         progress#set_text text
@@ -550,6 +552,7 @@ let start_upload_program program cnc =
   o
 
 let setup_upload upload_widget env =
+  let last_line_with_positive_z = ref None in
   let run_callback () =
     match !(env#gcode), env#cnc with
     | Some gcode, Some cnc ->
@@ -562,6 +565,13 @@ let setup_upload upload_widget env =
         then 1
         else (List.nth gcode' (num_lines - 1)).sr_state1.ms_orig_line_number
       in
+      let input_by_line = 
+        let h = Hashtbl.create last_line in
+        flip List.iter gcode' (fun sr ->
+          Hashtbl.add h sr.sr_state1.ms_orig_line_number sr
+        );
+        fun n -> Hashtbl.find h n
+      in
       let upload = start_upload_program (List.enum gcode') cnc in
       let t0 = Unix.gettimeofday () in
       let status_report_hook = Hook.hook (Cnc.status_report_tinyg cnc) (
@@ -570,6 +580,8 @@ let setup_upload upload_widget env =
           let progress = float status.line /. float last_line in
           let time_left = (now -. t0) /. progress in
           let time_finished = t0 +. time_left in
+          let z = Gcode.Evaluate.AxisMap.find `Z (input_by_line status.line).sr_state1.ms_position in
+          if z > 0.0 then last_line_with_positive_z := Some status.line;
           env#cnc_control#set_position (v3_of_status_tinyg status);
           upload_widget#set_progress
             progress
@@ -594,6 +606,10 @@ let setup_upload upload_widget env =
     | _ -> ()
   in
   let abort_callback () =
+    upload_widget#set_abort_text (
+      Printf.sprintf "Last line with positive Z: %s"
+        (Option.default "-" (Option.map string_of_int !last_line_with_positive_z))
+    );
     Cnc.ignore (Option.get env#cnc) Cnc.flush_queue
   in
   upload_widget#run_button_connect run_callback;
