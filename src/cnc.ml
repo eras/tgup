@@ -458,12 +458,12 @@ let send_raw_noresponse str future : unit request =
      HandlerFuture future
     )
 
-let send_flush future : unit request =
+let send_feed_hold future : unit request =
   fun () ->
     ((fun t ->
       external_request t (fun rs -> 
         enqueue_flush rs;
-        enqueue_str rs "!%";
+        enqueue_str rs "!";
         (* TODO: why does this need to use set_if_unset?! *)
         enqueue_notify rs (unit_of_request_finish_state (fun x -> ignore (future#set_if_unset x)));
       )
@@ -585,13 +585,21 @@ let wrap_response : _ -> _ -> ('a -> unit) -> unit -> handler_bottomend =
   fun input output respond ->
     input (fun msg -> respond (output msg))
 
-let flush_queue : unit request = 
+let feed_hold : unit request = 
   let future = new Future.t in
   future#add_persistent_callback (function
   | ResultOK () -> ()
   | ResultDequeued -> ()
   );
-  send_flush future
+  send_feed_hold future
+
+let feed_resume : unit request = 
+  let future = new Future.t in
+  future#add_persistent_callback (function
+  | ResultOK () -> ()
+  | ResultDequeued -> ()
+  );
+  send_raw_noresponse "%" future
 
 let raw_gcode str = send_gcode str unit_response
 

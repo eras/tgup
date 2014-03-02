@@ -517,6 +517,7 @@ let upload_widget ~packing () =
         let enable_progress = running in
 	let enable_run = not running in
 	let enable_abort = running in 
+        if enable_abort then abort_info#set_text "";
         if enable_progress then progress#misc#show() else progress#misc#hide ();
 	run_button#misc#set_sensitive enable_run;
 	abort_button#misc#set_sensitive enable_abort;
@@ -553,6 +554,7 @@ let start_upload_program program cnc =
 
 let setup_upload upload_widget env =
   let last_line_with_positive_z = ref None in
+  let aborting = ref false in
   let run_callback () =
     match !(env#gcode), env#cnc with
     | Some gcode, Some cnc ->
@@ -599,18 +601,30 @@ let setup_upload upload_widget env =
 	    Printf.printf "Program upload complete!\n%!";
             Hook.unhook status_report_hook;
 	    upload_widget#set_running false;
-	    env#cnc_control#set_enabled true
+	    env#cnc_control#set_enabled true;
+            aborting := false
 	  )
       );
       ()
     | _ -> ()
   in
   let abort_callback () =
-    upload_widget#set_abort_text (
-      Printf.sprintf "Last line with positive Z: %s"
-        (Option.default "-" (Option.map string_of_int !last_line_with_positive_z))
-    );
-    Cnc.ignore (Option.get env#cnc) Cnc.flush_queue
+    Printf.printf "Try abort..\n";
+    if not !aborting then (
+      Printf.printf "Do abort!\n";
+      aborting := true;
+      upload_widget#set_abort_text (
+        Printf.sprintf "Last line with positive Z: %s"
+          (Option.default "-" (Option.map string_of_int !last_line_with_positive_z))
+      );
+      Cnc.async (Option.get env#cnc) Cnc.feed_hold (fun _ ->
+        (* TODO: better way to do this? wait for state to be in feedhold and then resume? *)
+        ignore @@ Glib.Timeout.add ~ms:1000 ~callback:(fun () ->
+          Cnc.ignore (Option.get env#cnc) Cnc.feed_resume;
+          false
+        )
+      )
+    )
   in
   upload_widget#run_button_connect run_callback;
   upload_widget#abort_button_connect abort_callback
