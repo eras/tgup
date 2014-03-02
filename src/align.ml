@@ -563,17 +563,23 @@ let setup_upload upload_widget env =
         else (List.nth gcode' (num_lines - 1)).sr_state1.ms_orig_line_number
       in
       let upload = start_upload_program (List.enum gcode') cnc in
+      let t0 = Unix.gettimeofday () in
       let status_report_hook = Hook.hook (Cnc.status_report_tinyg cnc) (
         fun status ->
+          let now = Unix.gettimeofday () in
+          let progress = float status.line /. float last_line in
+          let time_left = (now -. t0) /. progress in
+          let time_finished = t0 +. time_left in
           env#cnc_control#set_position (v3_of_status_tinyg status);
           upload_widget#set_progress
-            (float status.line /. float last_line)
-            (Printf.sprintf "Line %d" status.line);
+            progress
+            (Printf.sprintf "Line %d/%d, ETA %s at %s" status.line last_line
+               (Utils.human_eta (int_of_float time_left))
+               (try Utils.string_of_time time_finished with Unix.Unix_error (Unix.EINVAL, _, _) -> "-"));
       ) in
       upload#finished#add_persistent_callback (
 	function `Failure | `Success ->
 	  Cnc.async cnc (Cnc.wait_status_tinyg @@ fun status ->
-	    Printf.printf "Evaluating %d\n%!" status.stat;
 	    match status.stat with
 	    | 3 -> Some ()
 	    | _ -> None
