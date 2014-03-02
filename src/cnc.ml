@@ -53,11 +53,19 @@ type write_message =
 | WriteChar of char
 | WriteNotify of (request_finish_state -> unit)
 
+type startup_info = {
+  si_fb : float;
+  si_fv : float;
+  si_hv : int;
+  si_id : string;
+}
+
 type internal_state = {
   get_next_handler	      : (unit -> (receive_handler * receive_finish) option);
   status_tinyg		      : status_tinyg option ref;
   io_thread_state	      : io_thread_state Protect.t;
   write_queue		      : write_message  Queue.t;
+  startup_info                : startup_info option ref;
   mutable next_write_time     : float;
   mutable xon                 : bool;
   mutable queue_full          : bool;
@@ -159,6 +167,19 @@ let process_initial_sr internal_state sr =
   internal_state.status_tinyg := Some status;
   Hook.issue (Protect.access internal_state.io_thread_state (fun state -> state.status_report_tinyg)) status  
 
+let parse_startup_info_r r =
+  let m = Option.map in
+  let open Json in
+  let (@.) f a b = f (a b) in
+  match m get_float (r +> "fb"), m get_float (r +> "fv"), m get_int (r +> "hv"), m get_string (r +> "id") with
+  | Some si_fb, Some si_fv, Some si_hv, Some si_id ->
+    Printf.printf "Parsed startup info\%!";
+    Some { si_fb; si_fv; si_hv; si_id }
+  | _ -> None
+
+let process_startup_info internal_state startup_info =
+  internal_state.startup_info := Some startup_info
+
 let process_r internal_state handler r =
   let handler =
     match handler with
@@ -200,12 +221,14 @@ let process_json internal_state handler str =
       Printf.printf "Error while parsing json: %s\n%!" (Printexc.to_string exn);
       None
   in
+  let initial_r = parse_startup_info_r (json +> "r") in
   let response_kind = 
-    match json +> "r", json +> "sr", json +> "qr" with
-    | Some r, _, _  -> `R r
-    | _, Some sr, _ -> `SR sr
-    | _, _, Some qr -> `QR qr
-    | _		    -> `None
+    match json +> "r", json +> "sr", json +> "qr", initial_r with
+    | _, _, _, Some r  -> `ParsedStartupInfo r
+    | Some r, _, _, _  -> `R r
+    | _, Some sr, _, _ -> `SR sr
+    | _, _, Some qr, _ -> `QR qr
+    | _                -> `None
   in
   match response_kind with
   | `None ->
@@ -223,6 +246,9 @@ let process_json internal_state handler str =
     if !(internal_state.status_tinyg) = None && Lazy.force sr <> None then
       process_initial_sr internal_state (Lazy.force sr);
     process_r internal_state handler r
+  | `ParsedStartupInfo initial_state ->
+    process_startup_info internal_state initial_state;
+    handler
 
 let rec handle_rds io_thread_state (get_next_handler : unit -> (receive_handler * receive_finish) option) lb buf internal_state cnc_fd handler cont =
   let n = Unix.read cnc_fd buf 0 (String.length buf) in
@@ -317,6 +343,7 @@ let io_thread (control_fd, cnc_fd, io_thread_state, ext_requests) =
     io_thread_state  = io_thread_state;
     get_next_handler = get_next_handler;
     status_tinyg     = ref None;
+    startup_info     = ref None;
     write_queue	     = Queue.create ();
     next_write_time  = 0.0;
     xon              = true;
