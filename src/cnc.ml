@@ -270,14 +270,17 @@ let rec handle_rds io_thread_state (get_next_handler : unit -> (receive_handler 
 	    | str when Pcre.pmatch ~pat:"{" str ->
 	      process_json internal_state handler str
 	    | str when Pcre.pmatch ~pat:"ok" str ->
-	      (match handler with
-	      | None -> BatOption.may (fun (_, finish) -> finish (ResultOK ())) (get_next_handler ())
-	      | Some (_, finish) -> finish (ResultOK ()));
-	      Protect.access io_thread_state (
-		fun st ->
-		  st.received_ack <- st.received_ack + 1;
-	      );
-	      None
+              if false
+              then (
+	        (match handler with
+	        | None -> BatOption.may (fun (_, finish) -> finish (ResultOK ())) (get_next_handler ())
+	        | Some (_, finish) -> finish (ResultOK ()));
+	        Protect.access io_thread_state (
+	          fun st ->
+	            st.received_ack <- st.received_ack + 1;
+	        );
+	        None )
+              else handler
 	    | "start" ->
 	      Protect.access io_thread_state (
 		fun st -> 
