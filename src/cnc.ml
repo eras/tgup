@@ -9,25 +9,6 @@ type 'a result =
 
 type request_finish_state = unit result
 
-type input =
-| InputString of string
-
-(* First a unit -> receive_handler function is used to get a function
-   that handles each input.
-
-   The handling function returns both a continuation for handling following
-   lines and another function, that is used to handle the "ok" *)
-type receive_handler = Cont of (input -> (receive_handler * receive_finish))
-and receive_finish = request_finish_state -> unit
-
-let register_of_char = function
-  | 'X' -> `X
-  | 'Y' -> `Y
-  | 'Z' -> `Z
-  | 'E' -> `E
-  | 'F' -> `F
-  | x -> failwith ("register_of_char: unknown register " ^ String.make 1 x)
-
 type status_tinyg = {
   x    : float;
   y    : float;
@@ -41,21 +22,6 @@ type status_tinyg = {
   line : int;
 }
 
-let xon = Char.chr 17
-let xoff = Char.chr 19
-
-let queue_threshold = 20 (* once there are less than n slots available, don't send new commands *)
-
-type io_thread_state = {
-  mutable received_ack	      : int;
-  mutable line_callbacks      : (unit -> (receive_handler * receive_finish)) BatDeque.t;
-  status_report_tinyg	      : status_tinyg Hook.t;
-}
-
-type write_message =
-| WriteChar of char
-| WriteNotify of (request_finish_state -> unit)
-
 type startup_info = {
   si_fb : float;
   si_fv : float;
@@ -63,7 +29,28 @@ type startup_info = {
   si_id : string;
 }
 
-type internal_state = {
+(* First a unit -> receive_handler function is used to get a function
+   that handles each input.
+
+   The handling function returns both a continuation for handling following
+   lines and another function, that is used to handle the "ok" *)
+
+type handle_input = {
+  hi_string : (string -> (receive_handler * receive_finish));
+  hi_restart : on_restart;                          (* device was restarted *)
+}
+and on_restart = (t -> unit)
+and receive_handler = Cont of handle_input
+and receive_finish = request_finish_state -> unit
+and io_thread_state = {
+  mutable received_ack	      : int;
+  mutable line_callbacks      : (unit -> (receive_handler * receive_finish)) BatDeque.t;
+  status_report_tinyg	      : status_tinyg Hook.t;
+}
+and write_message =
+| WriteChar of char
+| WriteNotify of (request_finish_state -> unit)
+and internal_state = {
   get_next_handler	      : (unit -> (receive_handler * receive_finish) option);
   status_tinyg		      : status_tinyg option ref;
   io_thread_state	      : io_thread_state Protect.t;
@@ -73,10 +60,8 @@ type internal_state = {
   mutable xon                 : bool;
   mutable queue_full          : bool;
 }
-
-type ext_requests = (internal_state -> unit) Queue.t Protect.t
-
-type t = { 
+and ext_requests = (internal_state -> unit) Queue.t Protect.t
+and t = { 
   fd			      : Unix.file_descr;
   receiver		      : io_thread_state Protect.t;
   status_report_tinyg	      : status_tinyg Hook.t;
@@ -95,8 +80,22 @@ type 'a handler_kind =
 
 type 'a request = unit -> ((t -> unit) * ('a handler_kind))
 
+let xon = Char.chr 17
+let xoff = Char.chr 19
+
+let queue_threshold = 20 (* once there are less than n slots available, don't send new commands *)
+
+let register_of_char = function
+  | 'X' -> `X
+  | 'Y' -> `Y
+  | 'Z' -> `Z
+  | 'E' -> `E
+  | 'F' -> `F
+  | x -> failwith ("register_of_char: unknown register " ^ String.make 1 x)
+
 let rec ignore_loop : receive_handler =
-  Cont (fun _str -> (ignore_loop, fun _ -> Printf.printf "Ignoring finish after loop\n%!"))
+  Cont { hi_string = (fun _str -> (ignore_loop, fun _ -> Printf.printf "Ignoring finish after loop\n%!"));
+         hi_restart = ignore }
 
 module ParseStatusTinyG = struct
   let get sr =
@@ -173,10 +172,9 @@ let process_initial_sr internal_state sr =
 let parse_startup_info_r r =
   let m = Option.map in
   let open Json in
-  let (@.) f a b = f (a b) in
   match m get_float (r +> "fb"), m get_float (r +> "fv"), m get_int (r +> "hv"), m get_string (r +> "id") with
   | Some si_fb, Some si_fv, Some si_hv, Some si_id ->
-    Printf.printf "Parsed startup info\%!";
+    Printf.printf "Parsed startup info\n%!";
     Some { si_fb; si_fv; si_hv; si_id }
   | _ -> None
 
@@ -193,7 +191,7 @@ let process_r internal_state handler r =
   | None -> None
   | Some (Cont f, _finish) -> 
     let open Json in
-    let (_handler, finish) = f (InputString (to_string r)) in
+    let (_handler, finish) = f.hi_string (to_string r) in
     Protect.access internal_state.io_thread_state (
       fun st ->
 	st.received_ack <- st.received_ack + 1;
@@ -300,7 +298,7 @@ let rec handle_rds io_thread_state (get_next_handler : unit -> (receive_handler 
 	      in
 	      match handler with
 	      | None -> None
-	      | Some (Cont f, _finish) -> Some (f (InputString str))
+	      | Some (Cont f, _finish) -> Some (f.hi_string str)
 	  in
 	  handler
 	)
@@ -494,30 +492,40 @@ let send_json msg = send_str (
 let send_gcode msg = send_json (`Assoc ["gc", `String msg])
 
 let unit_response (respond : unit result -> unit) =
-  let rec loop _str = (Cont loop, function ResultOK () -> respond (ResultOK ()) | ResultDequeued -> respond ResultDequeued) in
+  let rec loop = {
+    hi_string = (fun _str -> (Cont loop, ( function ResultOK () -> respond (ResultOK ()) | ResultDequeued -> respond ResultDequeued )));
+    hi_restart = (fun _t -> failwith "hi_restart")
+  } in
   fun () -> (Cont loop, respond)
 
 let foldl_response f v0 (respond : 'a -> unit) =
-  let rec loop v str =
-    (Cont (loop (f v str)), function ResultOK () -> respond v | ResultDequeued -> respond ResultDequeued)
-  in
+  let rec loop v = {
+    hi_string = (fun str -> (Cont (loop (f v str)), function ResultOK () -> respond v | ResultDequeued -> respond ResultDequeued));
+    hi_restart = (fun _t -> failwith "hi_restart")
+  } in
   fun () -> (Cont (loop v0), fun () -> respond v0)
 
 (* actually this just retrieves the last string *)
 let single_string_response (respond : string result -> unit) =
-  let rec loop (InputString str) = 
-    (Cont loop, function ResultOK () -> respond (ResultOK str) | ResultDequeued -> respond ResultDequeued) in
+  let rec loop = {
+    hi_string = (fun str -> (Cont loop, function ResultOK () -> respond (ResultOK str) | ResultDequeued -> respond ResultDequeued));
+    hi_restart = failwith "";
+  } in
   fun () -> (Cont loop,
              function
              | ResultOK () -> respond (ResultOK "")
              | ResultDequeued -> respond ResultDequeued)
 
 let json_response (respond : Json.json option result -> unit) =
-  let rec loop (InputString str) = 
-    (Cont loop,
-     function
-     | ResultOK () -> respond (ResultOK (Some (Json.from_string str)))
-     | ResultDequeued -> respond ResultDequeued) in
+  let rec loop = {
+    hi_string = (fun str ->
+      (Cont loop,
+       function
+       | ResultOK () -> respond (ResultOK (Some (Json.from_string str)))
+       | ResultDequeued -> respond ResultDequeued)
+    );
+    hi_restart = (fun _t -> failwith "hi_restart");
+  } in
   fun () -> (Cont loop,
              function
              | ResultOK () -> respond (ResultOK None)
