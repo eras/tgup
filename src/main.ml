@@ -23,7 +23,7 @@ let common_opts_t =
   in
   let bps = 
     let doc = "Set bps to use." in
-    Arg.(value & opt int 115200 & info ["b"; "bps"] ~docs ~doc)
+    Arg.(value & opt int 230400 & info ["b"; "bps"] ~docs ~doc)
   in
   let send_bps = 
     let doc = "Set bps to use for sending characters (by using delaying)." in
