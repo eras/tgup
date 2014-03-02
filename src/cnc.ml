@@ -9,12 +9,15 @@ type 'a result =
 
 type request_finish_state = unit result
 
+type input =
+| InputString of string
+
 (* First a unit -> receive_handler function is used to get a function
    that handles each input.
 
    The handling function returns both a continuation for handling following
    lines and another function, that is used to handle the "ok" *)
-type receive_handler = Cont of (string -> (receive_handler * receive_finish))
+type receive_handler = Cont of (input -> (receive_handler * receive_finish))
 and receive_finish = request_finish_state -> unit
 
 let register_of_char = function
@@ -190,7 +193,7 @@ let process_r internal_state handler r =
   | None -> None
   | Some (Cont f, _finish) -> 
     let open Json in
-    let (_handler, finish) = f (to_string r) in
+    let (_handler, finish) = f (InputString (to_string r)) in
     Protect.access internal_state.io_thread_state (
       fun st ->
 	st.received_ack <- st.received_ack + 1;
@@ -297,7 +300,7 @@ let rec handle_rds io_thread_state (get_next_handler : unit -> (receive_handler 
 	      in
 	      match handler with
 	      | None -> None
-	      | Some (Cont f, _finish) -> Some (f str)
+	      | Some (Cont f, _finish) -> Some (f (InputString str))
 	  in
 	  handler
 	)
@@ -502,7 +505,7 @@ let foldl_response f v0 (respond : 'a -> unit) =
 
 (* actually this just retrieves the last string *)
 let single_string_response (respond : string result -> unit) =
-  let rec loop str = 
+  let rec loop (InputString str) = 
     (Cont loop, function ResultOK () -> respond (ResultOK str) | ResultDequeued -> respond ResultDequeued) in
   fun () -> (Cont loop,
              function
@@ -510,7 +513,7 @@ let single_string_response (respond : string result -> unit) =
              | ResultDequeued -> respond ResultDequeued)
 
 let json_response (respond : Json.json option result -> unit) =
-  let rec loop str = 
+  let rec loop (InputString str) = 
     (Cont loop,
      function
      | ResultOK () -> respond (ResultOK (Some (Json.from_string str)))
