@@ -536,6 +536,9 @@ let start_upload_program program cnc =
   let rec loop () =
     match Enum.get strings with
     | None -> o#finished#set `Success
+    | Some (orig_line_nuber, "") ->
+      Hook.issue line_sent orig_line_nuber;
+      loop ()
     | Some (orig_line_nuber, str) ->
       Cnc.async cnc (Cnc.raw_gcode str) @@ function 
 	| ResultOK () ->
