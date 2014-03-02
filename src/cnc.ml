@@ -213,8 +213,16 @@ let discard_char char str =
     String.of_list (List.rev !strq)
   )
 
+let hex_dump str =
+  let b = Buffer.create 1024 in
+  for c = 0 to String.length str - 1 do
+    Printf.ksprintf (Buffer.add_string b) "%s%2x" (if c > 0 then " " else "") (Char.code (str.[c]))
+  done;
+  Buffer.contents b
+
 let process_json internal_state handler str =
   let open Json in
+  if false then Printf.printf "Original input: %s\n%!" (hex_dump str);
   let str = discard_char '\000' str in
   let json =
     try Some (from_string str)
