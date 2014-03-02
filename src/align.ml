@@ -284,7 +284,7 @@ let draw_overlay env liveview_context =
     let open Utils.Matrix in
     let tool_mapping = Gg.M3.move (Gg.V2.neg env#cnc_control#get_viewport_position) in
     let matrix = world_to_camera *| tool_mapping *| !(env#gcode_to_tool) in
-    Option.may (render_gcode cairo matrix) !(env#gcode);
+    if !(env#show_gcode) then Option.may (render_gcode cairo matrix) !(env#gcode);
     fun () -> render_grid cairo (tool_mapping *|| world_to_camera) liveview_context#bounds
   ) in
   ( set_source_rgba cairo 0.0 1.0 0.0 0.5;
@@ -629,6 +629,14 @@ let setup_upload upload_widget env =
   upload_widget#run_button_connect run_callback;
   upload_widget#abort_button_connect abort_callback
 
+let toggle_widget ~packing ~var label () =
+  let t = GButton.toggle_button ~label ~packing () in
+  t#set_active !var;
+  ignore (t#connect#toggled (fun () ->
+    var := t#active
+  ));
+  ()
+
 let gui sigint_triggered config camera_matrix_arg (tool_camera_offset : Gg.V2.t option) gcode_filename video_device =
   let accel_group = GtkData.AccelGroup.create () in
   let video = 
@@ -674,6 +682,7 @@ let gui sigint_triggered config camera_matrix_arg (tool_camera_offset : Gg.V2.t 
   let (coord_mode_selection, _) = GEdit.combo_box_text ~strings:["Tool mode"; "Camera mode"] ~active:(int_of_coord_mode cnc_control#get_coord_mode) ~packing:control_box#pack () in
   let point_mapping = ref Gg.M3.id in
   let gcode = ref None in
+  let show_gcode = ref true in
   let env = object
     val gcode_to_tool = ref Gg.M3.id
     method points	   = points
@@ -686,6 +695,7 @@ let gui sigint_triggered config camera_matrix_arg (tool_camera_offset : Gg.V2.t 
     method cnc             = cnc
     method gcode	   = gcode
     method gcode_to_tool   = gcode_to_tool
+    method show_gcode      = show_gcode
   end in
   let set_coord_mode coord_mode =
     cnc_control#set_coord_mode coord_mode;
@@ -719,6 +729,7 @@ let gui sigint_triggered config camera_matrix_arg (tool_camera_offset : Gg.V2.t 
     gcode := Some contents
   in
   gcode_loader ~packing:control_box#pack ~callback:set_gcode ?gcode_filename ();
+  toggle_widget ~packing:control_box#pack ~var:env#show_gcode "Show G-code" ();
   let _ =
     let callback () =
       match !(env#gcode) with
