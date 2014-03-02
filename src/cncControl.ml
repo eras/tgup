@@ -6,7 +6,7 @@ type coord_mode =
 
 let movement_limit = false
 
-let view ~packing cnc () =
+let view ~camera_z ~tool_z ~packing cnc () =
   let with_cnc f =
     match cnc with
     | None -> ()
@@ -106,7 +106,8 @@ let view ~packing cnc () =
       (fun el -> el#misc#set_sensitive mode)
       !elements
   in
-  let tool_level = ref None in
+  let camera_z = ref camera_z in
+  let tool_z = ref tool_z in
   let o = object 
     method get_position = Gg.V3.v !cnc_x !cnc_y !cnc_z
     method get_viewport_position = Gg.V2.add (Gg.V2.v !cnc_x !cnc_y) (coord_mode_offset !coord_mode)
@@ -114,7 +115,7 @@ let view ~packing cnc () =
     method adjust_z z = move_z_by z
     method position_adjust_callback = position_adjust_callback
 
-    method get_tool_level = !tool_level
+    method get_tool_level = !tool_z
 
   (* set position without moving *)
     method set_position v3 = Gg.V3.(cnc_x := x v3; cnc_y := y v3; cnc_z := z v3)
@@ -135,6 +136,6 @@ let view ~packing cnc () =
   let env = object
     method cnc_control = o
   end in
-  Widgets.level_store_widget "camera" ~packing:vbox#pack ~env ();
-  Widgets.level_store_widget ~store:tool_level "tool" ~packing:vbox#pack ~env ();
+  Widgets.level_store_widget ~store:camera_z "camera" ~packing:vbox#pack ~env ();
+  Widgets.level_store_widget ~store:tool_z "tool" ~packing:vbox#pack ~env ();
   o

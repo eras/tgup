@@ -94,6 +94,14 @@ let camera_offset =
   let doc = "Define cnc-camera offset" in
   Arg.(value & opt (some @@ map v2_of_list_parser list_of_v2 @@ list float) None & info ["camera-offset"] ~doc)
 
+let camera_z =
+  let doc = "Define camera z position (so it's in focus)" in
+  Arg.(value & opt (some float) None & info ["camera-z"] ~doc)
+
+let tool_z =
+  let doc = "Define tool z position (distance from stock)" in
+  Arg.(value & opt (some float) None & info ["tool-z"] ~doc)
+
 let load_gcode_file =
   let doc = "G-code file to load" in
   Arg.(value & opt (some file) None & info ["load"] ~doc)
@@ -113,7 +121,7 @@ let cmd_upload sigint_triggered =
   Term.info "upload" ~version
 
 let cmd_align sigint_triggered = 
-  Term.(pure (Align.align sigint_triggered) $ common_opts_t $ camera_matrix $ camera_offset $ load_gcode_file $ video_device),
+  Term.(pure (Align.align sigint_triggered) $ common_opts_t $ camera_matrix $ camera_offset $ camera_z $ tool_z $ load_gcode_file $ video_device),
   Term.info "align" ~version
 
 let sigint_triggered = new Future.t

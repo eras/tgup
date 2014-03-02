@@ -637,7 +637,7 @@ let toggle_widget ~packing ~var label () =
   ));
   ()
 
-let gui sigint_triggered config camera_matrix_arg (tool_camera_offset : Gg.V2.t option) gcode_filename video_device =
+let gui sigint_triggered config camera_matrix_arg (tool_camera_offset : Gg.V2.t option) camera_z tool_z gcode_filename video_device =
   let accel_group = GtkData.AccelGroup.create () in
   let video = 
     try new Video.v4l2 video_device
@@ -665,7 +665,7 @@ let gui sigint_triggered config camera_matrix_arg (tool_camera_offset : Gg.V2.t 
       None
   in
   let control_box = GPack.vbox ~packing:(hbox#pack ~expand:false ~padding:5) () in
-  let cnc_control = CncControl.view ~packing:(control_box#pack) cnc () in
+  let cnc_control = CncControl.view ~camera_z ~tool_z ~packing:(control_box#pack) cnc () in
   Option.may cnc_control#set_camera_offset tool_camera_offset;
   let info = GMisc.label ~packing:control_box#pack () in
   let int_of_coord_mode = function
