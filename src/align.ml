@@ -395,7 +395,7 @@ let alignment_widget ~cnc_control ~packing gcode_to_tool_var =
       let angle = angle_of_matrix gcode_to_tool in
       let scale' = scale_of_matrix gcode_to_tool in
       let translation = translation_of_matrix gcode_to_tool in
-      Printf.sprintf "angle: %.2f scale : %.3f\ntranslation: %s"
+      Printf.sprintf "angle: %.3f scale : %.5f\ntranslation: %s"
 	(angle /. Float.pi *. 180.0)
 	scale'
 	(V2.to_string translation)
