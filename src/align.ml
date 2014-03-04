@@ -402,6 +402,8 @@ let alignment_widget ~cnc_control ~packing gcode_to_tool_var =
     in
     results#set_text text
   in
+  let scaled = ref false in
+  let _ = Widgets.toggle_widget ~packing:vbox#pack ~var:scaled "Scaled" () in
   let mark_callback cur_mark reference =
     cur_mark := Some (reference, cnc_control#get_viewport_position);
     match !mark1, !mark2 with
@@ -409,7 +411,7 @@ let alignment_widget ~cnc_control ~packing gcode_to_tool_var =
       let gcode_to_tool = coordinate_translation tool1 gcode1 in
       set_matrix gcode_to_tool
     | Some (gcode1, tool1), Some (gcode2, tool2) ->
-      let gcode_to_tool = coordinate_transformation ~scaled:false (tool1, tool2) (gcode1, gcode2) in
+      let gcode_to_tool = coordinate_transformation ~scaled:!scaled (tool1, tool2) (gcode1, gcode2) in
       let _ =
 	if false then
 	  let open Gg in
