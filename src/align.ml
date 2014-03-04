@@ -531,27 +531,35 @@ let start_upload_program program cnc =
     flip Enum.map program @@ fun (sr : Gcode.Evaluate.step_result) ->
       (sr.sr_state1.ms_orig_line_number, Gcode.Evaluate.string_of_step_result sr) in
   let line_sent = Hook.create () in
+  let abort = ref false in
   let o = 
     let finished = new Future.t in
     ( object
       method finished = finished
       method line_sent = line_sent
+      method abort = abort := true
       end )
   in
   let rec loop () =
-    match Enum.get strings with
-    | None -> o#finished#set `Success
-    | Some (orig_line_nuber, "") ->
-      Hook.issue line_sent orig_line_nuber;
-      loop ()
-    | Some (orig_line_nuber, str) ->
-      Cnc.async cnc (Cnc.raw_gcode str) @@ function 
+    if !abort
+    then o#finished#set `Failure
+    else 
+      match Enum.get strings with
+      | None -> o#finished#set `Success
+      | Some (orig_line_nuber, "") ->
+        Hook.issue line_sent orig_line_nuber;
+        loop ()
+      | Some (orig_line_nuber, str) ->
+        Cnc.async cnc (Cnc.raw_gcode str) @@ function 
 	| ResultOK () ->
           Hook.issue line_sent orig_line_nuber;
           loop ()
 	| ResultDequeued -> o#finished#set `Failure
   in
-  loop ();
+  Cnc.async cnc Cnc.set_absolute (function
+  | ResultOK () -> loop ();
+  | ResultDequeued -> o#finished#set `Failure 
+  );
   o
 
 let setup_upload upload_widget env =
