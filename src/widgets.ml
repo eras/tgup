@@ -25,3 +25,10 @@ let level_store_widget ?store name ~packing ~env () =
   ));
   ()
 
+let toggle_widget ~packing ~var label () =
+  let t = GButton.toggle_button ~label ~packing () in
+  t#set_active !var;
+  ignore (t#connect#toggled (fun () ->
+    var := t#active
+  ));
+  ()

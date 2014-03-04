@@ -629,14 +629,6 @@ let setup_upload upload_widget env =
   upload_widget#run_button_connect run_callback;
   upload_widget#abort_button_connect abort_callback
 
-let toggle_widget ~packing ~var label () =
-  let t = GButton.toggle_button ~label ~packing () in
-  t#set_active !var;
-  ignore (t#connect#toggled (fun () ->
-    var := t#active
-  ));
-  ()
-
 let gui sigint_triggered config camera_matrix_arg (tool_camera_offset : Gg.V2.t option) camera_z tool_z gcode_filename video_device =
   let accel_group = GtkData.AccelGroup.create () in
   let video = 
@@ -729,7 +721,7 @@ let gui sigint_triggered config camera_matrix_arg (tool_camera_offset : Gg.V2.t 
     gcode := Some contents
   in
   gcode_loader ~packing:control_box#pack ~callback:set_gcode ?gcode_filename ();
-  toggle_widget ~packing:control_box#pack ~var:env#show_gcode "Show G-code" ();
+  Widgets.toggle_widget ~packing:control_box#pack ~var:env#show_gcode "Show G-code" ();
   let _ =
     let callback () =
       match !(env#gcode) with
