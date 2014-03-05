@@ -19,11 +19,30 @@ type 'a result =
 | ResultOK of 'a
 | ResultDequeued
 
+(** Core protocol interface *)
+
 (** [connect "/dev/ttyUSB0" 115200] connects to a CNC device *)
 val connect : string -> int -> t
 
+(** [wait t request] synchronously sends in a request *)
+val wait : t -> 'a request -> 'a result
+
+(** [async t request callback] asynchronously sends in a request. The callback will be called when a response arrives. *)
+val async : t -> 'a request -> ('a result -> unit) -> unit
+
+(** [ignore t request] is the same as [async r request], but there is
+    no callback function (nor a value can be retrieved) *)
+val ignore : t -> 'a request -> unit
+
+(** Send a raw request (without newline); a line number N will be added *)
+val raw_gcode : string -> unit request
+
+(** Utility functions *)
+
 (** [name_of_axis] returns the name (ie. "X") of an axis *)
 val name_of_axis : [< `X | `Y | `Z ] -> string
+
+(** G-code commands *)
 
 (** [set_relative] makes the device to go into the absolute coordinate
     mode. Note! feed rate must be set before callling this! *)
@@ -83,21 +102,8 @@ val set_power : bool -> unit request
 (** Marlin: [set_port portnumber value] sets a port to a certain value *)
 val set_port : int -> int -> unit request
 
-(** Send a raw request (without newline); a line number N will be added *)
-val raw_gcode : string -> unit request
-
 (** Starts feed hold mode ("!") and flushes send queue *)
 val feed_hold : unit request
 
 (** Resumes TinyG *)
 val feed_resume : unit request
-
-(** [wait t request] synchronously sends in a request *)
-val wait : t -> 'a request -> 'a result
-
-(** [async t request callback] asynchronously sends in a request. The callback will be called when a response arrives. *)
-val async : t -> 'a request -> ('a result -> unit) -> unit
-
-(** [ignore t request] is the same as [async r request], but there is
-    no callback function (nor a value can be retrieved) *)
-val ignore : t -> 'a request -> unit
