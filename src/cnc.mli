@@ -30,8 +30,11 @@ val wait : t -> 'a request -> 'a result
 (** [async t request callback] asynchronously sends in a request. The callback will be called when a response arrives. *)
 val async : t -> 'a request -> ('a result -> unit) -> unit
 
-(** [ignore t request] is the same as [async r request], but there is
+(** [async_ignore t request] is the same as [async r request], but there is
     no callback function (nor a value can be retrieved) *)
+val async_ignore : t -> 'a request -> unit
+
+(** obsolete. Same as async_ignore. *)
 val ignore : t -> 'a request -> unit
 
 (** Send a raw request (without newline); a line number N will be added *)

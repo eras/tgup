@@ -45,30 +45,48 @@ end = struct
       (String.explode str)
 end
 
+(* Handler for lines that expect a response from the device. The
+   request may or may not have been sent in. *)
+class type ['request_postaction] line_handler =
+object
+  method handle_line : string -> 'request_postaction
+  method handle_dequeue : unit -> unit
+end
+
+module DQ = Reins.DoubleQueue
+
+type handler_queue = request_postaction line_handler DQ.t ref
+and request_postaction =
+| RP_None
+| RP_AddLineHandler of request_postaction line_handler
+
+(* Interface the requests may use for controlling the internal state *)
 type request_if = <
     write_str : string -> unit;
   >
 
 (* state internal to the thread *)
 type internal = {
-  i_cnc_fd          : Unix.file_descr;
-  i_write_queue     : CharQueue.t;
-  i_xon             : bool;
-  i_queue_full      : bool;
+  i_cnc_fd                : Unix.file_descr;
+  i_write_queue           : CharQueue.t;
+  i_xon                   : bool;
+  i_queue_full            : bool;
+
+  i_handler_queue         : handler_queue;
 }
-
-type 'a request = internal -> request_if -> ('a * internal)
-
-module RequestEnv = struct
-  type env = (internal * request_if)
-  type response = internal
-end
-
-module Reqs = ExtRequest.Channel(RequestEnv)
 
 type 'a result =
 | ResultOK of 'a
-| ResultDequeued
+| ResultDequeued                        (* request was purged from the queue *)
+
+type 'a request = internal -> request_if -> ('a result -> unit) -> (internal * request_postaction)
+
+module RequestEnv = struct
+  type env = (internal * request_if)
+  type response = (internal * request_postaction)
+end
+
+module Reqs = ExtRequest.Channel(RequestEnv)
 
 (* the external interface *)
 type t = {
@@ -76,17 +94,65 @@ type t = {
   t_reqs     : Reqs.t;
 }
 
-let req_send_str str =
-  fun internal request_if ->
+let req_send_str_without_ack str : unit request =
+  fun internal request_if callback ->
     request_if#write_str str;
-    ((), internal)
+    callback (ResultOK ());
+    (internal, RP_None)
+
+let req_send_str_with_ack str : unit request =
+  fun internal request_if callback ->
+    request_if#write_str str;
+    let line_handler = object
+      method handle_line _str = 
+        callback (ResultOK ());
+        RP_None
+      method handle_dequeue () =
+        callback ResultDequeued
+    end in 
+    (internal, RP_AddLineHandler line_handler)
+
+(* Handles whatever response there arrives and gives a signal to the callback. *)
+let ack_request_callback callback =
+  fun str ->
+    callback (ResultOK ());
+    RP_None
+
+(** [async t request callback] asynchronously sends in a request. The callback will be called when a response arrives. *)
+let async : 'a. t -> 'a request -> ('a result -> unit) -> unit = fun t request callback ->
+  Reqs.async t.t_reqs (
+    fun (env, request_if) ->
+      let (env, request_postaction) = request env request_if callback in
+      ((), Ok (env, request_postaction))
+  )
+
+(** [wait t request] synchronously sends in a request *)
+let wait : t -> 'a request -> 'a result = fun t request ->
+  let response_future = new Future.t in
+  async t request (
+    fun response -> response_future#set response
+  );
+  response_future#wait ()
+
+(** [async_ignore t request] is the same as [async r request], but there is
+    no callback function (nor a value can be retrieved) *)
+let async_ignore : t -> 'a request -> unit = fun t request -> async t request ignore
+
+let process_postaction (internal : internal) (postaction : request_postaction) =
+  match postaction with
+  | RP_None -> internal
+  | RP_AddLineHandler handler ->
+    internal.i_handler_queue := DQ.snoc handler !(internal.i_handler_queue);
+    internal
 
 let handle_reqs reqs internal loop =
   let interface = object
     method write_str str = CharQueue.add internal.i_write_queue str
   end in
   match Reqs.process reqs (internal, interface) with
-  | Ok internal -> loop internal
+  | Ok (internal, postaction) -> 
+    let internal = process_postaction internal postaction in
+    loop internal
   | Bad exn ->
     Printf.eprintf "Cnc.handle_reqs: handler threw an exception: %s\n%!" (Printexc.to_string exn);
     raise exn
@@ -135,35 +201,15 @@ let connect device bps =
     i_write_queue     = CharQueue.create ();
     i_xon             = false;
     i_queue_full      = false;
+    i_handler_queue   = ref DQ.empty;
   } in
   let _ = Thread.create (fun () -> thread t_reqs t_internal) () in
   let t = { t_internal; t_reqs } in
   t
 
-(** [async t request callback] asynchronously sends in a request. The callback will be called when a response arrives. *)
-let async : t -> 'a request -> ('a result -> unit) -> unit = fun t request callback ->
-  Reqs.async t.t_reqs (
-    fun (env, request_if) ->
-      let (value, env) = request env request_if in
-      callback (ResultOK value);
-      ((), Ok env)
-  )
-
-(** [wait t request] synchronously sends in a request *)
-let wait : t -> 'a request -> 'a result = fun t request ->
-  let response_chan = Event.new_channel () in
-  async t request (
-    fun response -> Event.sync (Event.send response_chan response)
-  );
-  Event.sync (Event.receive response_chan)
-
-(** [ignore t request] is the same as [async r request], but there is
-    no callback function (nor a value can be retrieved) *)
-let ignore : t -> 'a request -> unit = fun t request -> async t request ignore
-
 (** Send a raw request (without newline); a line number N will be added *)
 let raw_gcode : string -> unit request = fun gcode ->
-  req_send_str (gcode ^ "\n")
+  req_send_str_with_ack (gcode ^ "\n")
 
 (** [name_of_axis] returns the name (ie. "X") of an axis *)
 let name_of_axis : [< `X | `Y | `Z ] -> string = fun _ -> failwith "not implemented"
@@ -231,3 +277,6 @@ let feed_hold : unit request = fun _ -> failwith "not implemented"
 
 (** Resumes TinyG *)
 let feed_resume : unit request = fun _ -> failwith "not implemented"
+
+let ignore = async_ignore
+
