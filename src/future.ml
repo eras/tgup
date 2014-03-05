@@ -7,6 +7,15 @@ exception FutureAlreadySet
 type never
 type dependency = unit -> never (* used to keep a reference around, the function isn't actually called *)
 
+class type ['a] readonly =
+object
+  method add_callback : ('a -> unit) -> dependency
+  method add_persistent_callback : ('a -> unit) -> unit
+  method get		: 'a option
+  method wait		: unit -> 'a
+  method add_dependency : dependency -> unit
+end
+
 class ['a] t =
 object (self : 'self)
   val mutex = Protect.create (Mutex.create ()) ()
@@ -64,7 +73,7 @@ type ('a, 'b) future_cb = (< add_callback : ('a -> unit) -> dependency; add_pers
 let map f t =
   let future = new t in
   future#add_dependency (t#add_callback (fun x -> future#set (f x)));
-  future
+  (future :> _ readonly)
 
 let wait ts =
   let future = new t in
