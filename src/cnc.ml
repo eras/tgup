@@ -107,7 +107,7 @@ let thread reqs internal =
     (* | _ when List.mem internal.i_cnc_fd wrs -> handle_write internal.i_cnc_fd internal_state (fun () -> loop handler) *)
     | _ -> loop internal
   in
-  loop internal
+  ignore (`Exit = loop internal)
 
 let connect device bps =
   let i_cnc_fd = Unix.openfile device [Unix.O_RDWR] 0 in
