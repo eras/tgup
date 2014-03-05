@@ -2,15 +2,16 @@ open Batteries
 
 module type Request = sig
   type env
+  type response
 end
 
 module Channel (E : Request) : sig
   type t
-  type 'a request = (E.env -> ('a * E.env))
+  type 'a request = (E.env -> ('a * E.response))
 
   val create : unit -> t
 
-  val process : t -> E.env -> E.env (* may rise End_of_file? *)
+  val process : t -> E.env -> E.response (* may rise End_of_file? *)
 
   val get_read_fd : t -> Unix.file_descr
 
@@ -18,13 +19,13 @@ module Channel (E : Request) : sig
 
   val async : t -> 'a request -> unit
 end = struct
-  type 'a request = (E.env -> ('a * E.env))
+  type 'a request = (E.env -> ('a * E.response))
 
   type t = {
     wr : Unix.file_descr;
     rd : Unix.file_descr;
 
-    queue : (E.env -> E.env) Queue.t;
+    queue : (E.env -> E.response) Queue.t;
     mutex : Mutex.t;
   }
 
@@ -68,12 +69,12 @@ end = struct
     send t (
       fun env -> 
         match wrap request env with
-        | Ok (x, env) ->
+        | Ok (x, response) ->
           Event.sync (Event.send ev (Ok x));
-          (env : E.env)
+          (response : E.response)
         | Bad exn ->
           Event.sync (Event.send ev (Bad exn));
-          (env : E.env)
+          (response : E.response)
     );
     Event.sync (Event.receive ev)
       
