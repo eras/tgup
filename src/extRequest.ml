@@ -65,18 +65,18 @@ end = struct
     ignore (try_write t.wr buf 0 1)
 
   let sync t request =
-    let ev = Event.new_channel () in
+    let future = new Future.t in
     send t (
       fun env -> 
         match wrap request env with
         | Ok (x, response) ->
-          Event.sync (Event.send ev (Ok x));
+          future#set (Ok x);
           response
         | Bad exn ->
-          Event.sync (Event.send ev (Bad exn));
+          future#set (Bad exn);
           Bad exn
     );
-    Event.sync (Event.receive ev)
+    future#wait ()
       
   let async t request = send t (fun env -> snd (request env))
 end
