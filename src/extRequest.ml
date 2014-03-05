@@ -7,11 +7,11 @@ end
 
 module Channel (E : Request) : sig
   type t
-  type 'a request = (E.env -> ('a * E.response))
+  type 'a request = (E.env -> ('a * (E.response, exn) result))
 
   val create : unit -> t
 
-  val process : t -> E.env -> E.response (* may rise End_of_file? *)
+  val process : t -> E.env -> (E.response, exn) result (* may rise End_of_file? *)
 
   val get_read_fd : t -> Unix.file_descr
 
@@ -19,13 +19,13 @@ module Channel (E : Request) : sig
 
   val async : t -> 'a request -> unit
 end = struct
-  type 'a request = (E.env -> ('a * E.response))
+  type 'a request = (E.env -> ('a * (E.response, exn) result))
 
   type t = {
     wr : Unix.file_descr;
     rd : Unix.file_descr;
 
-    queue : (E.env -> E.response) Queue.t;
+    queue : (E.env -> (E.response, exn) result) Queue.t;
     mutex : Mutex.t;
   }
 
@@ -71,10 +71,10 @@ end = struct
         match wrap request env with
         | Ok (x, response) ->
           Event.sync (Event.send ev (Ok x));
-          (response : E.response)
+          response
         | Bad exn ->
           Event.sync (Event.send ev (Bad exn));
-          (response : E.response)
+          Bad exn
     );
     Event.sync (Event.receive ev)
       
