@@ -282,7 +282,7 @@ let draw_overlay env liveview_context =
   | Some camera_to_world ->
     let world_to_camera = Gg.M3.inv camera_to_world in
     let open Utils.Matrix in
-    let tool_mapping = Gg.M3.move (Gg.V2.neg env#cnc_control#get_viewport_position) in
+    let tool_mapping = Gg.M3.move (Gg.V2.neg env#cnc_control#get_tool_position) in
     let matrix = world_to_camera *| tool_mapping *| !(env#gcode_to_tool) in
     if !(env#show_gcode) then Option.may (render_gcode cairo matrix) !(env#gcode);
     fun () -> render_grid cairo (tool_mapping *|| world_to_camera) liveview_context#bounds
@@ -405,7 +405,7 @@ let alignment_widget ~cnc_control ~packing gcode_to_tool_var =
   let scaled = ref false in
   let _ = Widgets.toggle_widget ~packing:vbox#pack ~var:scaled "Scaled" () in
   let mark_callback cur_mark reference =
-    cur_mark := Some (reference, cnc_control#get_viewport_position);
+    cur_mark := Some (reference, cnc_control#get_tool_position);
     match !mark1, !mark2 with
     | Some (gcode1, tool1), None ->
       let gcode_to_tool = coordinate_translation tool1 gcode1 in
