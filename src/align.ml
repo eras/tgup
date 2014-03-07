@@ -257,7 +257,7 @@ let render_grid cairo world_to_camera (x0, x1, y0, y1) =
     let (x', y') = map x y in
     f ~x:x' ~y:y'
   in
-  set_line_width cairo 1.0;
+  set_line_width cairo (length_in_matrix cairo_to_world 1.0);
   set_source_rgba cairo 0.0 0.0 0.0 0.5;
   let density = nice_grid_density (length_in_matrix cairo_to_world 0.2) in
   let align f = f -. mod_float f density in
