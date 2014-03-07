@@ -216,6 +216,17 @@ let for_float_range x0 x_step x1 f =
   in
   loop x0
 
+(* Round the value up to the next 10^n *)
+let nice_grid_density f =
+  let l = log10 f in
+  let (fractional, integral) = modf l in
+  let integral =
+    if l > 0.0 && fractional <> 0.0
+    then integral +. 1.0
+    else integral
+  in
+  10.0 ** integral
+
 let render_grid cairo world_to_camera (x0, x1, y0, y1) =
   let open Cairo in
   let cairo_to_world = (Gg.M3.inv (Utils.Matrix.m3_of_cairo_matrix @@ Cairo.get_matrix cairo)) in
@@ -248,7 +259,7 @@ let render_grid cairo world_to_camera (x0, x1, y0, y1) =
   in
   set_line_width cairo 1.0;
   set_source_rgba cairo 0.0 0.0 0.0 0.5;
-  let density = 1.0 in
+  let density = nice_grid_density (length_in_matrix cairo_to_world 0.2) in
   let align f = f -. mod_float f density in
   for_float_range (align (x0 -. density)) density (align (x1 +. density))
     (fun x ->
