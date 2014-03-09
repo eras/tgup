@@ -80,9 +80,11 @@ let view ~camera_z ~tool_z ~packing cnc () =
   ignore ((add @@ GButton.button ~label:"X-" ~packing:(directionals#attach ~left:0 ~top:1) ())#connect#clicked (move (-1) (0)));
   ignore ((add @@ GButton.button ~label:"Z+" ~packing:(z_controls_box#attach ~left:0 ~top:0) ())#connect#clicked (move_z (1)));
   ignore ((add @@ GButton.button ~label:"Z-" ~packing:(z_controls_box#attach ~left:0 ~top:1) ())#connect#clicked (move_z (-1)));
+  let position_updated = Hook.create () in
   let handle_tinyg_report (report : Cnc.status_tinyg) = 
     info#set_label (
       let (x, y) = Gg.V2.to_tuple (Gg.V2.sub (Gg.V2.v report.x report.y) (coord_mode_offset !coord_mode)) in
+      Hook.issue position_updated (Gg.V3.v x y report.z);
       Printf.sprintf "CNC: X%.3f Y%.3f Z%.3f" x y report.z
     )
   in
@@ -141,6 +143,8 @@ let view ~camera_z ~tool_z ~packing cnc () =
     method get_camera_position = Gg.V2.sub (Gg.V2.v !cnc_x !cnc_y) !camera_offset
 
     method set_enabled = set_enabled
+
+    method position_updated = position_updated
   end in
   let env = object
     method cnc_control = o
