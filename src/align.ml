@@ -321,7 +321,7 @@ let location_label at =
   let open Gg.V3 in
   Printf.sprintf "X:%.3f Y:%.3f Z:%.3f" (x at) (y at) (z at)
 
-let mark_location_widget ~label ~packing ?tooltip cnc_control f =
+let mark_location_widget ~location ~label ~packing ?tooltip f =
   let tooltips = GData.tooltips () in
   let mark_box = GPack.hbox ~packing () in
   let mark_button = GButton.button ~label ~packing:mark_box#pack () in
@@ -331,7 +331,7 @@ let mark_location_widget ~label ~packing ?tooltip cnc_control f =
   let mark_label = GMisc.label ~packing:mark_box#pack () in
   mark_label#set_label "Unset";
   let set_mark event =
-    let location = cnc_control#get_position in
+    let location = location () in
     mark_label#set_label (f location);
   in
   ignore (mark_button#connect#clicked ~callback:set_mark)
@@ -723,7 +723,13 @@ let gui sigint_triggered config camera_matrix_arg (tool_camera_offset : Gg.V2.t 
   ignore (coord_mode_selection#connect#changed (fun () ->
     set_coord_mode (coord_mode_of_int coord_mode_selection#active)
   ));
-  let _ = mark_location_widget ~label:"Mark" ~tooltip:"Mark the current position of drill" cnc_control (tap (save_location mark_tool_location) @. location_label) ~packing:control_box#pack in
+  let _ =
+    mark_location_widget
+      ~label:"Mark" ~tooltip:"Mark the current position of drill"
+      ~location:(fun () -> cnc_control#get_tool_position)
+      (tap (save_location mark_tool_location) @. location_label)
+      ~packing:control_box#pack
+  in
   let set_camera_offset camera_at =
     match !mark_tool_location with
     | None -> ""
@@ -732,7 +738,13 @@ let gui sigint_triggered config camera_matrix_arg (tool_camera_offset : Gg.V2.t 
       cnc_control#set_camera_offset (v2_of_v3 offset);
       location_label offset
   in
-  let _ = mark_location_widget ~label:"Camera\noffset" ~tooltip:"Measure distance between camera and drill mark" cnc_control set_camera_offset ~packing:control_box#pack in
+  let _ =
+    mark_location_widget
+      ~label:"Camera\noffset" ~tooltip:"Measure distance between camera and drill mark"
+      ~location:(fun () -> cnc_control#get_tool_position)
+      set_camera_offset
+      ~packing:control_box#pack
+  in
   alignment_widget ~cnc_control ~packing:control_box#pack env#gcode_to_tool;
   ignore (Hook.hook liveview#overlay (draw_overlay env));
   ignore (Hook.hook cnc_control#position_adjust_callback (tool_moved env));
