@@ -374,7 +374,17 @@ let alignment_widget ~cnc_control ~packing gcode_to_tool_var =
   let tooltips = GData.tooltips () in
   let frame = GBin.frame ~packing ~label:"G-code realignment" ~label_xalign:0.5 () in
   let vbox = GPack.vbox ~packing:frame#add () in
+  let position_label = GMisc.label ~packing:vbox#pack () in
   let results = GMisc.label ~packing:vbox#pack ~selectable:true () in
+  ignore @@ Hook.hook cnc_control#position_updated (fun v3 ->
+    let label =
+      let tool_to_gcode = Gg.M3.inv !gcode_to_tool_var in
+      let mapped = Gg.P2.tr tool_to_gcode (v2_of_v3 v3) in
+      let open Gg.V2 in
+      Printf.sprintf "Stock: X%.3f Y%.3f Z%.3f" (x mapped) (y mapped) (Gg.V3.z v3)
+    in
+    position_label#set_text label
+  );
   let mark_widget ~callback ~label ~tooltip ~packing =
     let mark_box = GPack.hbox ~packing () in
     let mk_mark storage = GEdit.entry ~packing:mark_box#pack ~xalign:1.0 ~width:(10*10) () in
