@@ -114,8 +114,12 @@ let view ~camera_z ~tool_z ~packing cnc () =
   let tool_z = ref tool_z in
   let o = object 
     method get_position = Gg.V3.v !cnc_x !cnc_y !cnc_z
-    method get_viewport_position = Gg.V2.add (Gg.V2.v !cnc_x !cnc_y) (coord_mode_offset !coord_mode)
-    method get_tool_position = Gg.V2.add (Gg.V2.v !cnc_x !cnc_y) (tool_mode_offset !coord_mode)
+    method get_viewport_position = 
+      let v2 = Gg.V2.add (Gg.V2.v !cnc_x !cnc_y) (coord_mode_offset !coord_mode) in
+      Gg.V2.(Gg.V3.v (x v2) (y v2) !cnc_z)
+    method get_tool_position = 
+      let v2 = Gg.V2.add (Gg.V2.v !cnc_x !cnc_y) (tool_mode_offset !coord_mode) in
+      Gg.V2.(Gg.V3.v (x v2) (y v2) !cnc_z)
     method adjust_position xy = move_by (Gg.V2.x xy) (Gg.V2.y xy)
     method adjust_z z = move_z_by z
     method position_adjust_callback = position_adjust_callback

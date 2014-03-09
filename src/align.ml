@@ -293,7 +293,7 @@ let draw_overlay env liveview_context =
   | Some camera_to_world ->
     let world_to_camera = Gg.M3.inv camera_to_world in
     let open Utils.Matrix in
-    let tool_mapping = Gg.M3.move (Gg.V2.neg env#cnc_control#get_tool_position) in
+    let tool_mapping = Gg.M3.move (Gg.V2.neg (v2_of_v3 env#cnc_control#get_tool_position)) in
     let matrix = world_to_camera *| tool_mapping *| !(env#gcode_to_tool) in
     if !(env#show_gcode) then Option.may (render_gcode cairo matrix) !(env#gcode);
     fun () -> render_grid cairo (tool_mapping *|| world_to_camera) liveview_context#bounds
@@ -390,15 +390,15 @@ let alignment_widget ~cnc_control ~packing gcode_to_tool_var =
       if validate_entries () then
 	let x_ref = float_of_string mark_ref_x_entry#text in
 	let y_ref = float_of_string mark_ref_y_entry#text in
-	callback (Gg.V2.v x_ref y_ref)
+	callback (Gg.V3.v x_ref y_ref 0.0)
     ));
     validate_mark_button_state ();
     ignore (mark_ref_x_entry#connect#changed validate_mark_button_state);
     ignore (mark_ref_y_entry#connect#changed validate_mark_button_state);
     tooltips#set_tip mark_button#coerce ~text:tooltip
   in
-  let mark1 = ref None in
-  let mark2 = ref None in
+  let mark1 : (Gg.V3.t * Gg.V3.t) option ref = ref None in
+  let mark2 : (Gg.V3.t * Gg.V3.t) option ref = ref None in
   let set_matrix gcode_to_tool =
     gcode_to_tool_var := gcode_to_tool;
     let text = 
@@ -419,9 +419,15 @@ let alignment_widget ~cnc_control ~packing gcode_to_tool_var =
     cur_mark := Some (reference, cnc_control#get_tool_position);
     match !mark1, !mark2 with
     | Some (gcode1, tool1), None ->
+      let gcode1 = v2_of_v3 gcode1 in
+      let tool1 = v2_of_v3 tool1 in
       let gcode_to_tool = coordinate_translation tool1 gcode1 in
       set_matrix gcode_to_tool
     | Some (gcode1, tool1), Some (gcode2, tool2) ->
+      let gcode1 = v2_of_v3 gcode1 in
+      let gcode2 = v2_of_v3 gcode2 in
+      let tool1 = v2_of_v3 tool1 in
+      let tool2 = v2_of_v3 tool2 in
       let gcode_to_tool = coordinate_transformation ~scaled:!scaled (tool1, tool2) (gcode1, gcode2) in
       let _ =
 	if false then
