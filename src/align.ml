@@ -607,8 +607,9 @@ let setup_upload upload_widget env =
         fun status ->
           let now = Unix.gettimeofday () in
           let progress = float status.line /. float last_line in
-          let time_left = (now -. t0) /. progress in
-          let time_finished = t0 +. time_left in
+          let time_total = (now -. t0) /. progress in
+          let time_finished = t0 +. time_total in
+          let time_left = time_finished -. now in
           let z = Gcode.Evaluate.AxisMap.find `Z (input_by_line status.line).sr_state1.ms_position in
           if z > 0.0 then last_line_with_positive_z := Some status.line;
           env#cnc_control#set_position (v3_of_status_tinyg status);
