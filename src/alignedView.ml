@@ -92,6 +92,7 @@ let view (width, height) ?(angle=0.0) ?packing () =
   let overlay = Hook.create () in
   let angle = ref angle in
   let scale' = ref 1.0 in
+  let image_position = ref (Gg.V2.v 0.0 0.0) in
   let draw cr area_width area_height =
     let open Cairo in
     let r = 0.25 *. area_width in
@@ -148,6 +149,7 @@ let view (width, height) ?(angle=0.0) ?packing () =
     method set_image ((width, height), rgb_data) =
       image := Some (image_of_rgb (width, height) rgb_data, width, height);
       drawing_area#misc#draw None
+    method set_image_position v = image_position := v
     method on_button_press = on_button_press
     method on_mouse_move = on_mouse_move
     method overlay = overlay
