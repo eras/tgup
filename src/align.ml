@@ -306,7 +306,8 @@ let draw_overlay env liveview_context =
     (* Printf.printf "Resulting point: %f, %f\n%!" x y; *)
       arc cairo x y 10.0 0.0 pi2;
       fill cairo );
-  post_render ()
+  post_render ();
+  ignore (Unix.select [] [] [] 0.01)
 
 let move_tool env cam_xy camera_to_world =
   (* Move the most recently clicked point over the center *)
