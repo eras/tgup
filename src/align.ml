@@ -63,7 +63,7 @@ let add_calibration_point env (cam_xy, tool_xy) =
     let m = id in
     let m = mul m (rot angle) in
     let m = mul m (scale2 (V2.v scale' scale')) in
-    env#liveview#set_angle (angle_of_matrix m);
+    env#aligned_view#set_angle (angle_of_matrix m);
     if verbose then Printf.printf "camera_to_world: %s\n%!" (M3.to_string m);
     env#camera_to_world := Some m;
   | _ -> ()
@@ -107,7 +107,7 @@ let image_updater env =
 	    let now = Unix.gettimeofday () in
 	    incr frames;
 	    if verbose then Printf.printf "%d %.2f  \r%!" !frames (float !frames /. (now -. t0));
-	    env#liveview#set_image ((640, 480), rgb);
+	    env#aligned_view#set_image ((640, 480), rgb);
 	    wait_io ();
 	    false 
 	);
@@ -687,7 +687,7 @@ let gui sigint_triggered config camera_matrix_arg (tool_camera_offset : Gg.V2.t 
   let _ = GMisc.separator `HORIZONTAL ~packing:(vbox#pack ~fill:true ~padding:5) () in
   let hbox = GPack.hbox ~packing:vbox#add () in
   let camera_to_world = ref camera_matrix_arg in
-  let liveview = LiveView.view ~angle:(Option.map_default angle_of_matrix 0.0 !camera_to_world) ~packing:hbox#add (640, 480) () in
+  let aligned_view = AlignedView.view ~angle:(Option.map_default angle_of_matrix 0.0 !camera_to_world) ~packing:hbox#add (640, 480) () in
   let cnc = 
     try Some (Cnc.connect config.Common.co_device config.Common.co_bps)
     with exn ->
@@ -717,7 +717,7 @@ let gui sigint_triggered config camera_matrix_arg (tool_camera_offset : Gg.V2.t 
     val gcode_to_tool = ref Gg.M3.id
     method points	   = points
     method point_mapping   = point_mapping
-    method liveview	   = liveview
+    method aligned_view	   = aligned_view
     method camera_to_world = camera_to_world
     method info		   = info
     method video	   = video
@@ -757,10 +757,10 @@ let gui sigint_triggered config camera_matrix_arg (tool_camera_offset : Gg.V2.t 
       ~packing:control_box#pack
   in
   alignment_widget ~cnc_control ~packing:control_box#pack env#gcode_to_tool;
-  ignore (Hook.hook liveview#overlay (draw_overlay env));
+  ignore (Hook.hook aligned_view#overlay (draw_overlay env));
   ignore (Hook.hook cnc_control#position_adjust_callback (tool_moved env));
   tool_moved env cnc_control#get_position;
-  ignore (Hook.hook liveview#on_button_press (fun cam_xy ->
+  ignore (Hook.hook aligned_view#on_button_press (fun cam_xy ->
     if verbose then Printf.printf "Clicked at %s\n%!" (Gg.V2.to_string cam_xy);
     match !camera_to_world with
     | None -> add_calibration_point env (cam_xy, v2_of_v3 cnc_control#get_position);
@@ -785,7 +785,7 @@ let gui sigint_triggered config camera_matrix_arg (tool_camera_offset : Gg.V2.t 
     let upload_widget = upload_widget ~packing:control_box#pack () in
     setup_upload upload_widget env
   in
-  ignore (Hook.hook liveview#on_mouse_move (show_location env));
+  ignore (Hook.hook aligned_view#on_mouse_move (show_location env));
   image_updater env ();
   main_window#show ();
   GMain.Main.main ()
