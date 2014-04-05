@@ -21,8 +21,8 @@ let view ~camera_z ~tool_z ~packing cnc () =
   let z_controls_box =
     let frame = GBin.frame ~packing:directionals_hbox#add () in
     GPack.table ~packing:frame#add ~columns:3 ~rows:4 () in
-  let (travel_length, _) = GEdit.combo_box_entry_text ~strings:["0.05"; "0.1"; "1.0"; "10.0"; "20.0"] ~packing:(directionals#attach ~left:0 ~right:3 ~top:3) () in
-  let (z_travel_length, _) = GEdit.combo_box_entry_text ~strings:["0.05"; "0.1"; "1.0"] ~packing:(z_controls_box#attach ~left:0 ~top:3) () in
+  let (travel_length, _) = GEdit.combo_box_entry_text ~strings:["0.05"; "0.1"; "1.0"; "10.0"; "20.0"; "50.0"] ~packing:(directionals#attach ~left:0 ~right:3 ~top:3) () in
+  let (z_travel_length, _) = GEdit.combo_box_entry_text ~strings:["0.05"; "0.1"; "1.0"; "10.0"; "20.0"; "40.0"] ~packing:(z_controls_box#attach ~left:0 ~top:3) () in
   let info = GMisc.label ~packing:(vbox#pack ~expand:true) () in
   travel_length#entry#set_text "1.0";
   z_travel_length#entry#set_text "1.0";
