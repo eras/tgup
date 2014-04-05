@@ -392,7 +392,7 @@ let alignment_widget ~cnc_control ~packing gcode_to_tool_var =
     let mark_ref_x_entry = mk_mark () in
     let mark_ref_y_entry = mk_mark () in
     let mark_button = GButton.button ~label ~packing:mark_box#pack () in
-    let validate_entry entry = Pcre.pmatch ~pat:"^[0-9.]+$" entry#text in
+    let validate_entry entry = Pcre.pmatch ~pat:"^[0-9.-]+$" entry#text in
     let validate_entries () = validate_entry mark_ref_x_entry && validate_entry mark_ref_y_entry in
     let validate_mark_button_state () =
       mark_button#misc#set_sensitive (validate_entries ());
